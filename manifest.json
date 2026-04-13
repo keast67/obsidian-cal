@@ -6,5 +6,5 @@
   "description": "Monthly calendar in the sidebar with Apple Calendar events via iCloud CalDAV. Click a date to open the daily note.",
   "author": "Kuni Higashi",
   "authorUrl": "",
-  "isDesktopOnly": true
+  "isDesktopOnly": false
 }

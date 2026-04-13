@@ -458,8 +458,6 @@ class CalendarView extends ItemView {
   private eventCache: Map<string, CalEvent[]> = new Map(); // "YYYY-M" → events
   private isLoading = false;
   private lastError = "";
-  private eventListCollapsed = false;
-
   constructor(leaf: WorkspaceLeaf, plugin: CalPlugin) {
     super(leaf);
     this.plugin = plugin;
@@ -554,7 +552,7 @@ class CalendarView extends ItemView {
     const header = parent.createDiv({ cls: "cal-header" });
     const yr = this.displayMonth.getFullYear();
     const mo = this.displayMonth.getMonth();
-    header.createDiv({ cls: "cal-title", text: `${MONTH_NAMES[mo]} ${yr}` });
+    header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
 
     const nav = header.createDiv({ cls: "cal-nav" });
     const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "‹" });
@@ -651,18 +649,8 @@ class CalendarView extends ItemView {
 
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
     sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
-    const arrow = sectionHeader.createSpan({
-      cls: "cal-event-section-arrow" + (this.eventListCollapsed ? " collapsed" : ""),
-      text: "▾",
-    });
-    sectionHeader.onclick = () => {
-      this.eventListCollapsed = !this.eventListCollapsed;
-      arrow.toggleClass("collapsed", this.eventListCollapsed);
-      listEl.toggle(!this.eventListCollapsed);
-    };
 
     const listEl = section.createDiv({ cls: "cal-event-list" });
-    listEl.toggle(!this.eventListCollapsed);
 
     // Day header
     const dayHeader = listEl.createDiv({ cls: "cal-event-day-header" });

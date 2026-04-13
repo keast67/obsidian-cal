@@ -1,7 +1,7 @@
 {
   "name": "obsidian-cal",
   "version": "1.0.0",
-  "description": "Obsidian plugin: monthly calendar with Apple Calendar events",
+  "description": "Obsidian Calendar",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

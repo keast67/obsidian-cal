@@ -65,20 +65,6 @@ function formatEventDate(date) {
 }
 var DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 var DOW_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-var MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December"
-];
 function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -374,7 +360,6 @@ var CalendarView = class extends import_obsidian.ItemView {
     // "YYYY-M" → events
     this.isLoading = false;
     this.lastError = "";
-    this.eventListCollapsed = false;
     this.plugin = plugin;
     const now = new Date();
     this.selectedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -465,7 +450,7 @@ var CalendarView = class extends import_obsidian.ItemView {
     const header = parent.createDiv({ cls: "cal-header" });
     const yr = this.displayMonth.getFullYear();
     const mo = this.displayMonth.getMonth();
-    header.createDiv({ cls: "cal-title", text: `${MONTH_NAMES[mo]} ${yr}` });
+    header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
     const nav = header.createDiv({ cls: "cal-nav" });
     const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "\u2039" });
     prev.title = "Previous month";
@@ -542,17 +527,7 @@ var CalendarView = class extends import_obsidian.ItemView {
     const section = parent.createDiv({ cls: "cal-event-section" });
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
     sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
-    const arrow = sectionHeader.createSpan({
-      cls: "cal-event-section-arrow" + (this.eventListCollapsed ? " collapsed" : ""),
-      text: "\u25BE"
-    });
-    sectionHeader.onclick = () => {
-      this.eventListCollapsed = !this.eventListCollapsed;
-      arrow.toggleClass("collapsed", this.eventListCollapsed);
-      listEl.toggle(!this.eventListCollapsed);
-    };
     const listEl = section.createDiv({ cls: "cal-event-list" });
-    listEl.toggle(!this.eventListCollapsed);
     const dayHeader = listEl.createDiv({ cls: "cal-event-day-header" });
     dayHeader.createSpan({
       cls: "cal-event-day-name",

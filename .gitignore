@@ -1,0 +1,5 @@
+# Macintosh specific files
+.DS_Store
+
+# Others
+node_modules/

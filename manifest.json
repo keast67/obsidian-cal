@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-cal",
+  "name": "Calendar with Apple Events",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Monthly calendar in the sidebar with Apple Calendar events via iCloud CalDAV. Click a date to open the daily note.",
+  "author": "keast67",
+  "authorUrl": "",
+  "isDesktopOnly": true
+}

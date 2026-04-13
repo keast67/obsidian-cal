@@ -35,8 +35,8 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 16px;
-  padding: 2px 6px;
+  font-size: 13px;
+  padding: 2px 4px;
   border-radius: 4px;
   transition: color 0.15s, background 0.15s;
 }
@@ -196,9 +196,7 @@
 .cal-event-section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 10px 14px 8px;
-  cursor: pointer;
   background: var(--background-secondary);
   border-top: 1px solid var(--background-modifier-border);
 }
@@ -207,16 +205,6 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--text-normal);
-}
-
-.cal-event-section-arrow {
-  color: var(--text-muted);
-  font-size: 12px;
-  transition: transform 0.2s;
-}
-
-.cal-event-section-arrow.collapsed {
-  transform: rotate(-90deg);
 }
 
 /* ---- Event list scroll area ---- */

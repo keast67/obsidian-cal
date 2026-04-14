@@ -90,7 +90,7 @@ function formatTime(date: Date): string {
 // "Apr 14, 26" style
 function formatEventDate(date: Date): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const yyyy = String(date.getFullYear()).slice(4);
+  const yyyy = String(date.getFullYear()).slice(-4);
   return `${months[date.getMonth()]} ${date.getDate()}, ${yyyy}`;
 }
 

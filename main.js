@@ -60,8 +60,8 @@ function formatTime(date) {
 }
 function formatEventDate(date) {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const yy = String(date.getFullYear()).slice(2);
-  return `${months[date.getMonth()]} ${date.getDate()}, ${yy}`;
+  const yyyy = String(date.getFullYear()).slice(-4);
+  return `${months[date.getMonth()]} ${date.getDate()}, ${yyyy}`;
 }
 var DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 var DOW_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -469,7 +469,7 @@ var CalendarView = class extends import_obsidian.ItemView {
   renderGrid(parent) {
     var _a;
     const grid = parent.createDiv({ cls: "cal-grid" });
-    grid.createDiv({ cls: "cal-grid-header-cw", text: "CW" });
+    grid.createDiv({ cls: "cal-grid-header-cw", text: "W" });
     DOW_LABELS.forEach((label, i) => {
       const el = grid.createDiv({ cls: "cal-dow-label" + (i === 0 ? " cal-sunday" : "") });
       el.setText(label);
@@ -525,8 +525,6 @@ var CalendarView = class extends import_obsidian.ItemView {
   // ---- Event section ----
   renderEventSection(parent) {
     const section = parent.createDiv({ cls: "cal-event-section" });
-    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
-    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
     const listEl = section.createDiv({ cls: "cal-event-list" });
     const dayHeader = listEl.createDiv({ cls: "cal-event-day-header" });
     dayHeader.createSpan({
@@ -537,6 +535,8 @@ var CalendarView = class extends import_obsidian.ItemView {
       cls: "cal-event-date-label",
       text: formatEventDate(this.selectedDate)
     });
+    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
+    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
     const s = this.plugin.settings;
     if (!s.iCloudUsername || !s.iCloudPassword || !s.calendarName) {
       const status = listEl.createDiv({ cls: "cal-status" });

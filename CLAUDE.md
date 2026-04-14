@@ -15,10 +15,9 @@ obsidian-cal/
 └── main.js          # Compiled output loaded by Obsidian
 ```
 
-**Installed vault:** `~/Obsidian/202407_HCC/.obsidian/plugins/obsidian-cal/`
+**Deployment:** Plugin is installed in Obsidian via BRAT (Beta Reviewers Auto-update Tool) from GitHub. Do NOT copy files directly to the local Obsidian vault.
 
-After any change: `node esbuild.config.mjs production && cp main.js styles.css ~/Obsidian/202407_HCC/.obsidian/plugins/obsidian-cal/`  
-CSS-only changes: only copy `styles.css` (no rebuild needed).
+After any change: build with `node esbuild.config.mjs production`, then commit and push `main.js`, `styles.css`, and `manifest.json` to GitHub. BRAT will pick up the update from there.
 
 ## Architecture — main.ts sections
 

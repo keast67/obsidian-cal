@@ -90,8 +90,8 @@ function formatTime(date: Date): string {
 // "Apr 14, 26" style
 function formatEventDate(date: Date): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const yy = String(date.getFullYear()).slice(2);
-  return `${months[date.getMonth()]} ${date.getDate()}, ${yy}`;
+  const yyyy = String(date.getFullYear()).slice(4);
+  return `${months[date.getMonth()]} ${date.getDate()}, ${yyyy}`;
 }
 
 const DAY_NAMES = ["SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"];
@@ -576,7 +576,7 @@ class CalendarView extends ItemView {
     const grid = parent.createDiv({ cls: "cal-grid" });
 
     // Header row: CW + day-of-week labels
-    grid.createDiv({ cls: "cal-grid-header-cw", text: "CW" });
+    grid.createDiv({ cls: "cal-grid-header-cw", text: "W" });
     DOW_LABELS.forEach((label, i) => {
       const el = grid.createDiv({ cls: "cal-dow-label" + (i === 0 ? " cal-sunday" : "") });
       el.setText(label);
@@ -647,9 +647,6 @@ class CalendarView extends ItemView {
   private renderEventSection(parent: HTMLElement) {
     const section = parent.createDiv({ cls: "cal-event-section" });
 
-    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
-    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
-
     const listEl = section.createDiv({ cls: "cal-event-list" });
 
     // Day header
@@ -662,6 +659,9 @@ class CalendarView extends ItemView {
       cls: "cal-event-date-label",
       text: formatEventDate(this.selectedDate),
     });
+
+    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
+    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
 
     // Loading / error states
     const s = this.plugin.settings;

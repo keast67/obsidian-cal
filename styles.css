@@ -10,12 +10,12 @@
   font-size: 13px;
 }
 
-/* ---- Header: "April 2026  < >" ---- */
+/* ---- Header: "2026-04  < >" ---- */
 .cal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px 8px;
+  padding: 6px 6px;
 }
 
 .cal-title {

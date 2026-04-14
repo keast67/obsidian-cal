@@ -525,6 +525,8 @@ var CalendarView = class extends import_obsidian.ItemView {
   // ---- Event section ----
   renderEventSection(parent) {
     const section = parent.createDiv({ cls: "cal-event-section" });
+    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
+    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
     const listEl = section.createDiv({ cls: "cal-event-list" });
     const dayHeader = listEl.createDiv({ cls: "cal-event-day-header" });
     dayHeader.createSpan({
@@ -535,8 +537,6 @@ var CalendarView = class extends import_obsidian.ItemView {
       cls: "cal-event-date-label",
       text: formatEventDate(this.selectedDate)
     });
-    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
-    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
     const s = this.plugin.settings;
     if (!s.iCloudUsername || !s.iCloudPassword || !s.calendarName) {
       const status = listEl.createDiv({ cls: "cal-status" });

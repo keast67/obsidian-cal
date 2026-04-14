@@ -647,6 +647,9 @@ class CalendarView extends ItemView {
   private renderEventSection(parent: HTMLElement) {
     const section = parent.createDiv({ cls: "cal-event-section" });
 
+    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
+    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
+
     const listEl = section.createDiv({ cls: "cal-event-list" });
 
     // Day header
@@ -659,9 +662,6 @@ class CalendarView extends ItemView {
       cls: "cal-event-date-label",
       text: formatEventDate(this.selectedDate),
     });
-
-    const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
-    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
 
     // Loading / error states
     const s = this.plugin.settings;

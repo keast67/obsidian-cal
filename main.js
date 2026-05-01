@@ -530,6 +530,7 @@ var CalendarView = class extends import_obsidian.ItemView {
   }
   // ---- Event section ----
   async renderEventSection(parent) {
+    var _a;
     const section = parent.createDiv({ cls: "cal-event-section" });
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
     sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
@@ -594,9 +595,7 @@ var CalendarView = class extends import_obsidian.ItemView {
         content.createDiv({ cls: "cal-event-time", text: timeText });
       }
       const noteFileName = adjustFileName(dayStr, ev.summary) + ".md";
-      const notePath = folder ? `${folder}/${noteFileName}` : noteFileName;
-      console.log(notePath);
-      const noteFile = app.vault.getAbstractFileByPath(notePath);
+      const noteFile = (_a = app.vault.getFiles().find((f) => f.name === noteFileName)) != null ? _a : null;
       if (noteFile instanceof import_obsidian.TFile) {
         const link = content.createEl("a", { cls: "cal-event-title cal-event-title-link", text: ev.summary });
         link.onclick = async (e) => {

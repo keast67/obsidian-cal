@@ -737,9 +737,7 @@ class CalendarView extends ItemView {
       }
 
       const noteFileName = adjustFileName(dayStr, ev.summary) + ".md";
-      const notePath = folder ? `${folder}/${noteFileName}` : noteFileName;
-	  console.log(notePath);
-      const noteFile = app.vault.getAbstractFileByPath(notePath);
+      const noteFile = app.vault.getFiles().find(f => f.name === noteFileName) ?? null;
 
       if (noteFile instanceof TFile) {
         const link = content.createEl("a", { cls: "cal-event-title cal-event-title-link", text: ev.summary });

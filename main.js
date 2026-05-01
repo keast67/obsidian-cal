@@ -560,7 +560,7 @@ var CalendarView = class extends import_obsidian.ItemView {
     if (this.lastError) {
       const errEl = listEl.createDiv({ cls: "cal-status cal-error" });
       errEl.setText(`Error: ${this.lastError}`);
-      const retryBtn = listEl.createEl("button", { cls: "cal-refresh-btn", text: "Retry" });
+      const retryBtn = listEl.createEl("button", { cls: "cal-retry-btn", text: "Retry" });
       retryBtn.onclick = () => {
         this.plugin.caldav.reset();
         this.eventCache.clear();

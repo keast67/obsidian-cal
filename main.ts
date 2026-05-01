@@ -738,6 +738,7 @@ class CalendarView extends ItemView {
 
       const noteFileName = adjustFileName(dayStr, ev.summary) + ".md";
       const notePath = folder ? `${folder}/${noteFileName}` : noteFileName;
+	  console.log(notePath);
       const noteFile = app.vault.getAbstractFileByPath(notePath);
 
       if (noteFile instanceof TFile) {

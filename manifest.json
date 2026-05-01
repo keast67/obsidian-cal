@@ -1,7 +1,7 @@
 {
   "id": "obsidian-cal",
   "name": "Obsidian Calendar",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "minAppVersion": "0.15.0",
   "description": "Monthly calendar in the sidebar with Apple Calendar events via iCloud CalDAV. Click a date to open the daily note.",
   "author": "Kuni Higashi",

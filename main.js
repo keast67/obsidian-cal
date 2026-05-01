@@ -454,9 +454,6 @@ var CalendarView = class extends import_obsidian.ItemView {
     const yr = this.displayMonth.getFullYear();
     const mo = this.displayMonth.getMonth();
     header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
-    const refreshBtn = header.createEl("button", { cls: "cal-refresh-btn", text: "\u21BB" });
-    refreshBtn.title = "Refresh events";
-    refreshBtn.onclick = () => this.refresh();
     const nav = header.createDiv({ cls: "cal-nav" });
     const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "\u2039" });
     prev.title = "Previous month";
@@ -534,6 +531,12 @@ var CalendarView = class extends import_obsidian.ItemView {
     const section = parent.createDiv({ cls: "cal-event-section" });
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
     sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
+    const refreshBtn = sectionHeader.createEl("button", { cls: "cal-refresh-btn", text: "\u21BB" });
+    refreshBtn.title = "Refresh events";
+    refreshBtn.onclick = (e) => {
+      e.stopPropagation();
+      this.refresh();
+    };
     const listEl = section.createDiv({ cls: "cal-event-list" });
     const dayHeader = listEl.createDiv({ cls: "cal-event-day-header" });
     dayHeader.createSpan({

@@ -563,10 +563,6 @@ class CalendarView extends ItemView {
     const mo = this.displayMonth.getMonth();
     header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
 
-    const refreshBtn = header.createEl("button", { cls: "cal-refresh-btn", text: "↻" });
-    refreshBtn.title = "Refresh events";
-    refreshBtn.onclick = () => this.refresh();
-
     const nav = header.createDiv({ cls: "cal-nav" });
     const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "‹" });
     prev.title = "Previous month";
@@ -662,6 +658,9 @@ class CalendarView extends ItemView {
 
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
     sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
+    const refreshBtn = sectionHeader.createEl("button", { cls: "cal-refresh-btn", text: "↻" });
+    refreshBtn.title = "Refresh events";
+    refreshBtn.onclick = (e) => { e.stopPropagation(); this.refresh(); };
 
     const listEl = section.createDiv({ cls: "cal-event-list" });
 

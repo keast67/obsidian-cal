@@ -213,7 +213,7 @@
 .cal-event-section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 10px 14px 8px;
   cursor: pointer;
   background: var(--background-secondary);

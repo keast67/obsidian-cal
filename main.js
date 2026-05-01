@@ -595,6 +595,7 @@ var CalendarView = class extends import_obsidian.ItemView {
       }
       const noteFileName = adjustFileName(dayStr, ev.summary) + ".md";
       const notePath = folder ? `${folder}/${noteFileName}` : noteFileName;
+      console.log(notePath);
       const noteFile = app.vault.getAbstractFileByPath(notePath);
       if (noteFile instanceof import_obsidian.TFile) {
         const link = content.createEl("a", { cls: "cal-event-title cal-event-title-link", text: ev.summary });

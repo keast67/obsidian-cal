@@ -46,6 +46,23 @@
   background: var(--background-modifier-hover);
 }
 
+.cal-refresh-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  margin-left: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.cal-refresh-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
 /* ---- Calendar grid ---- */
 .cal-grid {
   display: grid;
@@ -301,6 +318,17 @@
   color: var(--text-normal);
   line-height: 1.35;
   word-break: break-word;
+}
+
+.cal-event-title-link {
+  color: var(--link-color);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cal-event-title-link:hover {
+  text-decoration: underline;
+  color: var(--link-color-hover);
 }
 
 .cal-event-allday-label {

@@ -68,6 +68,9 @@ var DOW_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
+function adjustFileName(day, name) {
+  return day + "_" + name.replace(/: /g, "_").replace(/:/g, "-").replace(/：/g, "_").replace(/\//g, "-").replace(/ /g, "-");
+}
 function toCalDAVDate(date) {
   return `${date.getUTCFullYear()}${pad2(date.getUTCMonth() + 1)}${pad2(date.getUTCDate())}T000000Z`;
 }
@@ -443,7 +446,7 @@ var CalendarView = class extends import_obsidian.ItemView {
     this.renderHeader(container);
     this.renderGrid(container);
     container.createDiv({ cls: "cal-separator" });
-    this.renderEventSection(container);
+    await this.renderEventSection(container);
   }
   // ---- Header ----
   renderHeader(parent) {
@@ -451,6 +454,9 @@ var CalendarView = class extends import_obsidian.ItemView {
     const yr = this.displayMonth.getFullYear();
     const mo = this.displayMonth.getMonth();
     header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
+    const refreshBtn = header.createEl("button", { cls: "cal-refresh-btn", text: "\u21BB" });
+    refreshBtn.title = "Refresh events";
+    refreshBtn.onclick = () => this.refresh();
     const nav = header.createDiv({ cls: "cal-nav" });
     const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "\u2039" });
     prev.title = "Previous month";
@@ -523,7 +529,7 @@ var CalendarView = class extends import_obsidian.ItemView {
     }
   }
   // ---- Event section ----
-  renderEventSection(parent) {
+  async renderEventSection(parent) {
     const section = parent.createDiv({ cls: "cal-event-section" });
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
     sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
@@ -574,6 +580,9 @@ var CalendarView = class extends import_obsidian.ItemView {
       listEl.createDiv({ cls: "cal-status", text: "No events for this day." });
       return;
     }
+    const { app } = this.plugin;
+    const folder = this.plugin.settings.dailyNoteFolder.trim().replace(/\/$/, "");
+    const dayStr = formatDate(this.selectedDate, "YYYY-MM-DD");
     for (const ev of events) {
       const item = listEl.createDiv({ cls: "cal-event-item" });
       item.createDiv({ cls: "cal-event-bullet" });
@@ -584,7 +593,19 @@ var CalendarView = class extends import_obsidian.ItemView {
         const timeText = `${formatTime(ev.start)} \u2013 ${formatTime(ev.end)}${ev.hasAlarm ? "  \u23F0" : ""}`;
         content.createDiv({ cls: "cal-event-time", text: timeText });
       }
-      content.createDiv({ cls: "cal-event-title", text: ev.summary });
+      const noteFileName = adjustFileName(dayStr, ev.summary) + ".md";
+      const notePath = folder ? `${folder}/${noteFileName}` : noteFileName;
+      const noteFile = app.vault.getAbstractFileByPath(notePath);
+      if (noteFile instanceof import_obsidian.TFile) {
+        const link = content.createEl("a", { cls: "cal-event-title cal-event-title-link", text: ev.summary });
+        link.onclick = async (e) => {
+          e.preventDefault();
+          const leaf = app.workspace.getLeaf(false);
+          await leaf.openFile(noteFile);
+        };
+      } else {
+        content.createDiv({ cls: "cal-event-title", text: ev.summary });
+      }
     }
   }
   // ---- Select a date & open daily note ----

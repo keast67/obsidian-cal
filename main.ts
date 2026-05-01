@@ -105,6 +105,15 @@ function sameDay(a: Date, b: Date): boolean {
          a.getDate() === b.getDate();
 }
 
+function adjustFileName(day: string, name: string): string {
+  return day + '_' + name
+    .replace(/: /g, '_')
+    .replace(/:/g, '-')
+    .replace(/：/g, '_')
+    .replace(/\//g, '-')
+    .replace(/ /g, '-');
+}
+
 // Returns Monday-midnight UTC string for CalDAV time-range
 function toCalDAVDate(date: Date): string {
   return `${date.getUTCFullYear()}${pad2(date.getUTCMonth()+1)}${pad2(date.getUTCDate())}T000000Z`;
@@ -544,7 +553,7 @@ class CalendarView extends ItemView {
     this.renderHeader(container);
     this.renderGrid(container);
     container.createDiv({ cls: "cal-separator" });
-    this.renderEventSection(container);
+    await this.renderEventSection(container);
   }
 
   // ---- Header ----
@@ -553,6 +562,10 @@ class CalendarView extends ItemView {
     const yr = this.displayMonth.getFullYear();
     const mo = this.displayMonth.getMonth();
     header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
+
+    const refreshBtn = header.createEl("button", { cls: "cal-refresh-btn", text: "↻" });
+    refreshBtn.title = "Refresh events";
+    refreshBtn.onclick = () => this.refresh();
 
     const nav = header.createDiv({ cls: "cal-nav" });
     const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "‹" });
@@ -644,7 +657,7 @@ class CalendarView extends ItemView {
   }
 
   // ---- Event section ----
-  private renderEventSection(parent: HTMLElement) {
+  private async renderEventSection(parent: HTMLElement) {
     const section = parent.createDiv({ cls: "cal-event-section" });
 
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
@@ -707,6 +720,10 @@ class CalendarView extends ItemView {
       return;
     }
 
+    const { app } = this.plugin;
+    const folder = this.plugin.settings.dailyNoteFolder.trim().replace(/\/$/, "");
+    const dayStr = formatDate(this.selectedDate, "YYYY-MM-DD");
+
     for (const ev of events) {
       const item = listEl.createDiv({ cls: "cal-event-item" });
       item.createDiv({ cls: "cal-event-bullet" });
@@ -718,7 +735,21 @@ class CalendarView extends ItemView {
         const timeText = `${formatTime(ev.start)} – ${formatTime(ev.end)}${ev.hasAlarm ? "  ⏰" : ""}`;
         content.createDiv({ cls: "cal-event-time", text: timeText });
       }
-      content.createDiv({ cls: "cal-event-title", text: ev.summary });
+
+      const noteFileName = adjustFileName(dayStr, ev.summary) + ".md";
+      const notePath = folder ? `${folder}/${noteFileName}` : noteFileName;
+      const noteFile = app.vault.getAbstractFileByPath(notePath);
+
+      if (noteFile instanceof TFile) {
+        const link = content.createEl("a", { cls: "cal-event-title cal-event-title-link", text: ev.summary });
+        link.onclick = async (e) => {
+          e.preventDefault();
+          const leaf = app.workspace.getLeaf(false);
+          await leaf.openFile(noteFile as TFile);
+        };
+      } else {
+        content.createDiv({ cls: "cal-event-title", text: ev.summary });
+      }
     }
   }
 

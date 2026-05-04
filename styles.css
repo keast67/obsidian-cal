@@ -46,6 +46,23 @@
   background: var(--background-modifier-hover);
 }
 
+.cal-view-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.cal-view-toggle-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
 .cal-refresh-btn {
   background: none;
   border: none;
@@ -213,9 +230,8 @@
 .cal-event-section-header {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  padding: 10px 14px 8px;
-  cursor: pointer;
+  justify-content: flex-end;
+  padding: 6px 14px 6px;
   background: var(--background-secondary);
   border-top: 1px solid var(--background-modifier-border);
 }

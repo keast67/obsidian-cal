@@ -467,6 +467,7 @@ class CalendarView extends ItemView {
   private eventCache: Map<string, CalEvent[]> = new Map(); // "YYYY-M" → events
   private isLoading = false;
   private lastError = "";
+  private viewMode: 'month' | 'week' = 'month';
   constructor(leaf: WorkspaceLeaf, plugin: CalPlugin) {
     super(leaf);
     this.plugin = plugin;
@@ -551,7 +552,11 @@ class CalendarView extends ItemView {
 
     const container = contentEl.createDiv({ cls: "cal-container" });
     this.renderHeader(container);
-    this.renderGrid(container);
+    if (this.viewMode === 'week') {
+      this.renderWeekGrid(container);
+    } else {
+      this.renderGrid(container);
+    }
     container.createDiv({ cls: "cal-separator" });
     await this.renderEventSection(container);
   }
@@ -559,18 +564,43 @@ class CalendarView extends ItemView {
   // ---- Header ----
   private renderHeader(parent: HTMLElement) {
     const header = parent.createDiv({ cls: "cal-header" });
-    const yr = this.displayMonth.getFullYear();
-    const mo = this.displayMonth.getMonth();
-    header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
 
-    const nav = header.createDiv({ cls: "cal-nav" });
-    const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "‹" });
-    prev.title = "Previous month";
-    prev.onclick = () => this.navigateMonth(-1);
+    if (this.viewMode === 'week') {
+      const sunday = new Date(this.selectedDate);
+      sunday.setDate(sunday.getDate() - sunday.getDay());
+      const saturday = new Date(sunday);
+      saturday.setDate(sunday.getDate() + 6);
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      let titleText: string;
+      if (sunday.getMonth() === saturday.getMonth()) {
+        titleText = `${months[sunday.getMonth()]} ${sunday.getDate()}–${saturday.getDate()}, ${sunday.getFullYear()}`;
+      } else {
+        titleText = `${months[sunday.getMonth()]} ${sunday.getDate()} – ${months[saturday.getMonth()]} ${saturday.getDate()}`;
+      }
+      header.createDiv({ cls: "cal-title", text: titleText });
 
-    const next = nav.createEl("button", { cls: "cal-nav-btn", text: "›" });
-    next.title = "Next month";
-    next.onclick = () => this.navigateMonth(1);
+      const nav = header.createDiv({ cls: "cal-nav" });
+      const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "‹" });
+      prev.title = "Previous week";
+      prev.onclick = () => this.navigateWeek(-1);
+
+      const next = nav.createEl("button", { cls: "cal-nav-btn", text: "›" });
+      next.title = "Next week";
+      next.onclick = () => this.navigateWeek(1);
+    } else {
+      const yr = this.displayMonth.getFullYear();
+      const mo = this.displayMonth.getMonth();
+      header.createDiv({ cls: "cal-title", text: `${yr}-${pad2(mo + 1)}` });
+
+      const nav = header.createDiv({ cls: "cal-nav" });
+      const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "‹" });
+      prev.title = "Previous month";
+      prev.onclick = () => this.navigateMonth(-1);
+
+      const next = nav.createEl("button", { cls: "cal-nav-btn", text: "›" });
+      next.title = "Next month";
+      next.onclick = () => this.navigateMonth(1);
+    }
   }
 
   private navigateMonth(delta: number) {
@@ -578,6 +608,15 @@ class CalendarView extends ItemView {
     this.displayMonth = new Date(d.getFullYear(), d.getMonth() + delta, 1);
     this.render();
     this.loadEventsForMonth(this.displayMonth.getFullYear(), this.displayMonth.getMonth());
+  }
+
+  private navigateWeek(delta: number) {
+    const d = new Date(this.selectedDate);
+    d.setDate(d.getDate() + delta * 7);
+    this.selectedDate = d;
+    this.displayMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    this.render();
+    this.loadEventsForMonth(d.getFullYear(), d.getMonth());
   }
 
   // ---- Calendar grid ----
@@ -652,12 +691,71 @@ class CalendarView extends ItemView {
     }
   }
 
+  // ---- Weekly grid (single row) ----
+  private renderWeekGrid(parent: HTMLElement) {
+    const grid = parent.createDiv({ cls: "cal-grid" });
+
+    grid.createDiv({ cls: "cal-grid-header-cw", text: "W" });
+    DOW_LABELS.forEach((label, i) => {
+      const el = grid.createDiv({ cls: "cal-dow-label" + (i === 0 ? " cal-sunday" : "") });
+      el.setText(label);
+    });
+
+    const today = new Date();
+    const sunday = new Date(this.selectedDate);
+    sunday.setDate(sunday.getDate() - sunday.getDay());
+
+    const { weekYear, weekNum } = simpleWeekInfo(sunday);
+
+    const wnCell = grid.createDiv({ cls: "cal-week-num", text: String(weekNum) });
+    wnCell.title = `Open weekly note ${weekYear}-W${pad2(weekNum)}`;
+    wnCell.onclick = () => this.openWeeklyNote(weekYear, weekNum);
+
+    for (let dow = 0; dow < 7; dow++) {
+      const cellDate = new Date(sunday);
+      cellDate.setDate(sunday.getDate() + dow);
+
+      const isToday = sameDay(cellDate, today);
+      const isSelected = sameDay(cellDate, this.selectedDate);
+      const isSunday = dow === 0;
+
+      let cls = "cal-day-cell";
+      if (isToday) cls += " cal-today";
+      if (isSelected) cls += " cal-selected";
+      if (isSunday) cls += " cal-sunday";
+
+      const cell = grid.createDiv({ cls });
+      const numEl = cell.createDiv({ cls: "cal-day-num" });
+      numEl.setText(String(cellDate.getDate()));
+
+      const dotsEl = cell.createDiv({ cls: "cal-day-dots" });
+      const evs = this.eventsForDate(cellDate);
+      const dotsCount = Math.min(evs.length, 3);
+      for (let d = 0; d < dotsCount; d++) {
+        const dot = dotsEl.createDiv({ cls: "cal-dot" });
+        if (evs[d]?.isAllDay) dot.addClass("cal-allday");
+      }
+
+      const dateCopy = new Date(cellDate);
+      cell.onclick = () => this.selectDate(dateCopy);
+    }
+  }
+
   // ---- Event section ----
   private async renderEventSection(parent: HTMLElement) {
     const section = parent.createDiv({ cls: "cal-event-section" });
 
     const sectionHeader = section.createDiv({ cls: "cal-event-section-header" });
-    sectionHeader.createSpan({ cls: "cal-event-section-title", text: "Event List" });
+
+    const viewToggleBtn = sectionHeader.createEl("button", { cls: "cal-view-toggle-btn" });
+    viewToggleBtn.setText(this.viewMode === 'month' ? "W" : "M");
+    viewToggleBtn.title = this.viewMode === 'month' ? "Switch to weekly view" : "Switch to monthly view";
+    viewToggleBtn.onclick = (e) => {
+      e.stopPropagation();
+      this.viewMode = this.viewMode === 'month' ? 'week' : 'month';
+      this.render();
+    };
+
     const refreshBtn = sectionHeader.createEl("button", { cls: "cal-refresh-btn", text: "↻" });
     refreshBtn.title = "Refresh events";
     refreshBtn.onclick = (e) => { e.stopPropagation(); this.refresh(); };

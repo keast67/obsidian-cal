@@ -459,16 +459,8 @@ var CalendarView = class extends import_obsidian.ItemView {
     if (this.viewMode === "week") {
       const sunday = new Date(this.selectedDate);
       sunday.setDate(sunday.getDate() - sunday.getDay());
-      const saturday = new Date(sunday);
-      saturday.setDate(sunday.getDate() + 6);
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      let titleText;
-      if (sunday.getMonth() === saturday.getMonth()) {
-        titleText = `${months[sunday.getMonth()]} ${sunday.getDate()}\u2013${saturday.getDate()}, ${sunday.getFullYear()}`;
-      } else {
-        titleText = `${months[sunday.getMonth()]} ${sunday.getDate()} \u2013 ${months[saturday.getMonth()]} ${saturday.getDate()}`;
-      }
-      header.createDiv({ cls: "cal-title", text: titleText });
+      const { weekYear, weekNum } = simpleWeekInfo(sunday);
+      header.createDiv({ cls: "cal-title", text: `${weekYear}-W${pad2(weekNum)}` });
       const nav = header.createDiv({ cls: "cal-nav" });
       const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "\u2039" });
       prev.title = "Previous week";

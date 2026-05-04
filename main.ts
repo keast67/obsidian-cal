@@ -568,16 +568,8 @@ class CalendarView extends ItemView {
     if (this.viewMode === 'week') {
       const sunday = new Date(this.selectedDate);
       sunday.setDate(sunday.getDate() - sunday.getDay());
-      const saturday = new Date(sunday);
-      saturday.setDate(sunday.getDate() + 6);
-      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-      let titleText: string;
-      if (sunday.getMonth() === saturday.getMonth()) {
-        titleText = `${months[sunday.getMonth()]} ${sunday.getDate()}–${saturday.getDate()}, ${sunday.getFullYear()}`;
-      } else {
-        titleText = `${months[sunday.getMonth()]} ${sunday.getDate()} – ${months[saturday.getMonth()]} ${saturday.getDate()}`;
-      }
-      header.createDiv({ cls: "cal-title", text: titleText });
+      const { weekYear, weekNum } = simpleWeekInfo(sunday);
+      header.createDiv({ cls: "cal-title", text: `${weekYear}-W${pad2(weekNum)}` });
 
       const nav = header.createDiv({ cls: "cal-nav" });
       const prev = nav.createEl("button", { cls: "cal-nav-btn", text: "‹" });

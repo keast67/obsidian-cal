@@ -74,14 +74,6 @@ function adjustFileName(day, name) {
 function toCalDAVDate(date) {
   return `${date.getUTCFullYear()}${pad2(date.getUTCMonth() + 1)}${pad2(date.getUTCDate())}T000000Z`;
 }
-function debounce(fn, delay) {
-  let timer;
-  return (...args) => {
-    if (timer !== void 0)
-      window.clearTimeout(timer);
-    timer = window.setTimeout(() => fn(...args), delay);
-  };
-}
 function unescapeICalText(s) {
   return s.replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\n/g, "\n").replace(/\\\\/g, "\\");
 }
@@ -410,28 +402,20 @@ var CalendarView = class extends import_obsidian.ItemView {
     const key = this.cacheKey(year, month);
     if (this.eventCache.has(key))
       return;
-    const generation = this.plugin.caldavGeneration;
-    const caldav = this.plugin.caldav;
     this.isLoading = true;
     this.lastError = "";
     this.render();
     try {
-      const events = await caldav.fetchEvents(year, month);
-      if (generation !== this.plugin.caldavGeneration)
-        return;
+      const events = await this.plugin.caldav.fetchEvents(year, month);
       this.eventCache.set(key, events);
       this.lastError = "";
     } catch (e) {
-      if (generation !== this.plugin.caldavGeneration)
-        return;
       const msg = e instanceof Error ? e.message : String(e);
       this.lastError = msg;
       new import_obsidian.Notice(`Calendar: ${msg}`, 8e3);
     } finally {
-      if (generation === this.plugin.caldavGeneration) {
-        this.isLoading = false;
-        this.render();
-      }
+      this.isLoading = false;
+      this.render();
     }
   }
   eventsForDate(date) {
@@ -779,12 +763,6 @@ var CalendarView = class extends import_obsidian.ItemView {
 var CalendarSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
-    // Coalesces rapid-fire onChange events (e.g. every keystroke while typing
-    // a password) into a single saveSettings() call, so we don't recreate the
-    // CalDAV client and refetch events mid-edit.
-    this.debouncedSave = debounce(() => {
-      this.plugin.saveSettings();
-    }, 600);
     this.plugin = plugin;
   }
   display() {
@@ -804,35 +782,35 @@ var CalendarSettingTab = class extends import_obsidian.PluginSettingTab {
       attr: { style: "font-size:12px;color:var(--text-muted);margin-bottom:12px" }
     });
     new import_obsidian.Setting(containerEl).setName("iCloud username (Apple ID)").setDesc("Your Apple ID email address, e.g. user@icloud.com").addText(
-      (t) => t.setPlaceholder("user@icloud.com").setValue(this.plugin.settings.iCloudUsername).onChange((v) => {
+      (t) => t.setPlaceholder("user@icloud.com").setValue(this.plugin.settings.iCloudUsername).onChange(async (v) => {
         this.plugin.settings.iCloudUsername = v.trim();
-        this.debouncedSave();
+        await this.plugin.saveSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("App-specific password").setDesc("Generate at appleid.apple.com. NOT your main Apple ID password.").addText((t) => {
       t.inputEl.type = "password";
-      t.setPlaceholder("xxxx-xxxx-xxxx-xxxx").setValue(this.plugin.settings.iCloudPassword).onChange((v) => {
+      t.setPlaceholder("xxxx-xxxx-xxxx-xxxx").setValue(this.plugin.settings.iCloudPassword).onChange(async (v) => {
         this.plugin.settings.iCloudPassword = v.trim();
-        this.debouncedSave();
+        await this.plugin.saveSettings();
       });
     });
     new import_obsidian.Setting(containerEl).setName("Calendar name").setDesc("Exact name of the Apple Calendar to display (case-insensitive).").addText(
-      (t) => t.setPlaceholder("Work").setValue(this.plugin.settings.calendarName).onChange((v) => {
+      (t) => t.setPlaceholder("Work").setValue(this.plugin.settings.calendarName).onChange(async (v) => {
         this.plugin.settings.calendarName = v.trim();
-        this.debouncedSave();
+        await this.plugin.saveSettings();
       })
     );
     containerEl.createEl("h3", { text: "Daily Notes" });
     new import_obsidian.Setting(containerEl).setName("Daily note format").setDesc("Date format tokens: YYYY (year), MM (month), DD (day). Must match your daily note filenames.").addText(
-      (t) => t.setPlaceholder("YYYY-MM-DD").setValue(this.plugin.settings.dailyNoteFormat).onChange((v) => {
+      (t) => t.setPlaceholder("YYYY-MM-DD").setValue(this.plugin.settings.dailyNoteFormat).onChange(async (v) => {
         this.plugin.settings.dailyNoteFormat = v.trim() || "YYYY-MM-DD";
-        this.debouncedSave();
+        await this.plugin.saveSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Daily note folder").setDesc("Folder path inside your vault where daily notes live, e.g. 'Journal/Daily'. Leave empty for vault root.").addText(
-      (t) => t.setPlaceholder("Journal/Daily").setValue(this.plugin.settings.dailyNoteFolder).onChange((v) => {
+      (t) => t.setPlaceholder("Journal/Daily").setValue(this.plugin.settings.dailyNoteFolder).onChange(async (v) => {
         this.plugin.settings.dailyNoteFolder = v.trim();
-        this.debouncedSave();
+        await this.plugin.saveSettings();
       })
     );
     containerEl.createEl("h3", { text: "Connection" });
@@ -858,10 +836,6 @@ ${url}`, 8e3);
 var CalPlugin = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
-    // Bumped every time `caldav` is replaced, so in-flight requests from a
-    // superseded client (e.g. one built from stale/partial credentials) can be
-    // recognized and ignored when they resolve late.
-    this.caldavGeneration = 0;
     this.view = null;
   }
   async onload() {
@@ -897,7 +871,6 @@ var CalPlugin = class extends import_obsidian.Plugin {
     var _a;
     await this.saveData(this.settings);
     this.caldav = new CalDAVClient(this.settings);
-    this.caldavGeneration++;
     (_a = this.view) == null ? void 0 : _a.refresh();
   }
   async activateView() {

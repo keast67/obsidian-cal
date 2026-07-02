@@ -119,6 +119,15 @@ function toCalDAVDate(date: Date): string {
   return `${date.getUTCFullYear()}${pad2(date.getUTCMonth()+1)}${pad2(date.getUTCDate())}T000000Z`;
 }
 
+// Delays invoking fn until `delay` ms have passed since the last call.
+function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
+  let timer: number | undefined;
+  return ((...args: any[]) => {
+    if (timer !== undefined) window.clearTimeout(timer);
+    timer = window.setTimeout(() => fn(...args), delay);
+  }) as T;
+}
+
 // ============================================================
 // iCal parser
 // ============================================================
@@ -506,21 +515,32 @@ class CalendarView extends ItemView {
     const key = this.cacheKey(year, month);
     if (this.eventCache.has(key)) return; // already loaded
 
+    // Snapshot which CalDAV client generation this request belongs to, so a
+    // late-resolving request from a superseded client (e.g. settings changed
+    // again while this was in flight) can be discarded instead of clobbering
+    // newer state with stale results/errors.
+    const generation = this.plugin.caldavGeneration;
+    const caldav = this.plugin.caldav;
+
     this.isLoading = true;
     this.lastError = "";
     this.render();
 
     try {
-      const events = await this.plugin.caldav.fetchEvents(year, month);
+      const events = await caldav.fetchEvents(year, month);
+      if (generation !== this.plugin.caldavGeneration) return; // superseded, ignore
       this.eventCache.set(key, events);
       this.lastError = "";
     } catch (e: unknown) {
+      if (generation !== this.plugin.caldavGeneration) return; // superseded, ignore
       const msg = e instanceof Error ? e.message : String(e);
       this.lastError = msg;
       new Notice(`Calendar: ${msg}`, 8000);
     } finally {
-      this.isLoading = false;
-      this.render();
+      if (generation === this.plugin.caldavGeneration) {
+        this.isLoading = false;
+        this.render();
+      }
     }
   }
 
@@ -928,6 +948,10 @@ class CalendarView extends ItemView {
 
 class CalendarSettingTab extends PluginSettingTab {
   private plugin: CalPlugin;
+  // Coalesces rapid-fire onChange events (e.g. every keystroke while typing
+  // a password) into a single saveSettings() call, so we don't recreate the
+  // CalDAV client and refetch events mid-edit.
+  private debouncedSave = debounce(() => { this.plugin.saveSettings(); }, 600);
 
   constructor(app: App, plugin: CalPlugin) {
     super(app, plugin);
@@ -961,9 +985,9 @@ class CalendarSettingTab extends PluginSettingTab {
         t
           .setPlaceholder("user@icloud.com")
           .setValue(this.plugin.settings.iCloudUsername)
-          .onChange(async (v) => {
+          .onChange((v) => {
             this.plugin.settings.iCloudUsername = v.trim();
-            await this.plugin.saveSettings();
+            this.debouncedSave();
           })
       );
 
@@ -975,9 +999,9 @@ class CalendarSettingTab extends PluginSettingTab {
         t
           .setPlaceholder("xxxx-xxxx-xxxx-xxxx")
           .setValue(this.plugin.settings.iCloudPassword)
-          .onChange(async (v) => {
+          .onChange((v) => {
             this.plugin.settings.iCloudPassword = v.trim();
-            await this.plugin.saveSettings();
+            this.debouncedSave();
           });
       });
 
@@ -988,9 +1012,9 @@ class CalendarSettingTab extends PluginSettingTab {
         t
           .setPlaceholder("Work")
           .setValue(this.plugin.settings.calendarName)
-          .onChange(async (v) => {
+          .onChange((v) => {
             this.plugin.settings.calendarName = v.trim();
-            await this.plugin.saveSettings();
+            this.debouncedSave();
           })
       );
 
@@ -1003,9 +1027,9 @@ class CalendarSettingTab extends PluginSettingTab {
         t
           .setPlaceholder("YYYY-MM-DD")
           .setValue(this.plugin.settings.dailyNoteFormat)
-          .onChange(async (v) => {
+          .onChange((v) => {
             this.plugin.settings.dailyNoteFormat = v.trim() || "YYYY-MM-DD";
-            await this.plugin.saveSettings();
+            this.debouncedSave();
           })
       );
 
@@ -1016,9 +1040,9 @@ class CalendarSettingTab extends PluginSettingTab {
         t
           .setPlaceholder("Journal/Daily")
           .setValue(this.plugin.settings.dailyNoteFolder)
-          .onChange(async (v) => {
+          .onChange((v) => {
             this.plugin.settings.dailyNoteFolder = v.trim();
-            await this.plugin.saveSettings();
+            this.debouncedSave();
           })
       );
 
@@ -1053,6 +1077,10 @@ class CalendarSettingTab extends PluginSettingTab {
 export default class CalPlugin extends Plugin {
   settings!: CalendarSettings;
   caldav!: CalDAVClient;
+  // Bumped every time `caldav` is replaced, so in-flight requests from a
+  // superseded client (e.g. one built from stale/partial credentials) can be
+  // recognized and ignored when they resolve late.
+  caldavGeneration = 0;
   private view: CalendarView | null = null;
 
   async onload() {
@@ -1093,6 +1121,7 @@ export default class CalPlugin extends Plugin {
     await this.saveData(this.settings);
     // Reset CalDAV client so it re-discovers with new credentials
     this.caldav = new CalDAVClient(this.settings);
+    this.caldavGeneration++;
     this.view?.refresh();
   }
 

@@ -36,6 +36,37 @@ var DEFAULT_SETTINGS = {
   dailyNoteFolder: ""
 };
 var VIEW_TYPE = "obsidian-cal-view";
+var WEATHER_ICONS = {
+  0: "\u2600\uFE0F",
+  1: "\u{1F324}",
+  2: "\u26C5\uFE0F",
+  3: "\u2601\uFE0F",
+  45: "\u{1F32B}",
+  48: "\u{1F32B}",
+  51: "\u2614\uFE0F",
+  53: "\u2614\uFE0F",
+  55: "\u2614\uFE0F",
+  56: "\u2614\uFE0F",
+  57: "\u2614\uFE0F",
+  61: "\u2614\uFE0F",
+  63: "\u2614\uFE0F",
+  65: "\u2614\uFE0F",
+  66: "\u2614\uFE0F",
+  67: "\u2614\uFE0F",
+  71: "\u2744\uFE0F",
+  73: "\u2744\uFE0F",
+  75: "\u2744\uFE0F",
+  77: "\u2744\uFE0F",
+  80: "\u2614\uFE0F",
+  81: "\u2614\uFE0F",
+  82: "\u2614\uFE0F",
+  85: "\u2744\uFE0F",
+  86: "\u2744\uFE0F",
+  95: "\u26A1\uFE0F",
+  96: "\u26A1\uFE0F",
+  99: "\u26A1\uFE0F"
+};
+var OT_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function simpleWeekInfo(sunday) {
   const saturday = new Date(sunday);
   saturday.setDate(sunday.getDate() + 6);
@@ -70,6 +101,26 @@ function sameDay(a, b) {
 }
 function adjustFileName(day, name) {
   return day + "_" + name.replace(/: /g, "_").replace(/:/g, "-").replace(/：/g, "_").replace(/\//g, "-").replace(/ /g, "-");
+}
+function formatHHMM(hhmm) {
+  return `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`;
+}
+function isoDate(date) {
+  return formatDate(date, "YYYY-MM-DD");
+}
+function dateFromIso(dateStr) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match)
+    return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+  return isoDate(date) === dateStr ? date : null;
+}
+function dowFor(dateStr) {
+  const date = new Date(`${dateStr}T12:00:00Z`);
+  return OT_DOW[(date.getUTCDay() + 6) % 7];
+}
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 function toCalDAVDate(date) {
   return `${date.getUTCFullYear()}${pad2(date.getUTCMonth() + 1)}${pad2(date.getUTCDate())}T000000Z`;
@@ -170,6 +221,151 @@ function parseICalEvents(icalText) {
   }
   return events;
 }
+function unfoldICalLines(text) {
+  return text.replace(/\r?\n[ \t]/g, "");
+}
+function getICalProp(lines, key) {
+  const re = new RegExp(`^${key}(?:;[^:]*)?:(.+)$`, "i");
+  for (const line of lines) {
+    const match = line.match(re);
+    if (match)
+      return { value: match[1].trim(), rawLine: line };
+  }
+  return null;
+}
+function getICalTzid(rawLine) {
+  const match = rawLine.match(/TZID=([^;:]+)/i);
+  return match ? match[1] : null;
+}
+function normalizeTimeZone(timeZone) {
+  return timeZone.replace(/%2F/gi, "/");
+}
+function localToUtcMs(localStr, timeZone) {
+  const naiveUtc = new Date(`${localStr}Z`).getTime();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(new Date(naiveUtc));
+  const get = (type) => {
+    var _a, _b;
+    return (_b = (_a = parts.find((part) => part.type === type)) == null ? void 0 : _a.value) != null ? _b : "00";
+  };
+  const localFromUtc = new Date(
+    `${get("year")}-${get("month")}-${get("day")}T${get("hour").replace("24", "00")}:${get("minute")}:${get("second")}Z`
+  ).getTime();
+  return naiveUtc + (naiveUtc - localFromUtc);
+}
+function parseOTICalDate(value, tzid, targetTz) {
+  if (/^\d{8}$/.test(value)) {
+    return {
+      dateStr: `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`,
+      timeStr: null,
+      isDate: true
+    };
+  }
+  const localStr = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}`;
+  const normalizedTargetTz = normalizeTimeZone(targetTz);
+  const utcMs = value.endsWith("Z") ? new Date(`${localStr}Z`).getTime() : localToUtcMs(localStr, normalizeTimeZone(tzid != null ? tzid : targetTz));
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: normalizedTargetTz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(new Date(utcMs));
+  const get = (type) => {
+    var _a, _b;
+    return (_b = (_a = parts.find((part) => part.type === type)) == null ? void 0 : _a.value) != null ? _b : "00";
+  };
+  return {
+    dateStr: `${get("year")}-${get("month")}-${get("day")}`,
+    timeStr: `${get("hour").replace("24", "00").padStart(2, "0")}${get("minute").padStart(2, "0")}`,
+    isDate: false
+  };
+}
+function parseOTICalEvents(icalText, targetTz) {
+  const events = [];
+  const blocks = icalText.split(/BEGIN:VEVENT/i).slice(1);
+  for (const block of blocks) {
+    const lines = unfoldICalLines(block).split(/\r?\n/).filter(Boolean);
+    const summaryProp = getICalProp(lines, "SUMMARY");
+    const startProp = getICalProp(lines, "DTSTART");
+    const endProp = getICalProp(lines, "DTEND");
+    const locationProp = getICalProp(lines, "LOCATION");
+    const descriptionProp = getICalProp(lines, "DESCRIPTION");
+    if (!summaryProp || !startProp)
+      continue;
+    const start = parseOTICalDate(startProp.value, getICalTzid(startProp.rawLine), targetTz);
+    const end = endProp ? parseOTICalDate(endProp.value, getICalTzid(endProp.rawLine), targetTz) : start;
+    events.push({
+      summary: unescapeICalText(summaryProp.value),
+      start,
+      end,
+      location: locationProp ? unescapeICalText(locationProp.value) : "",
+      description: descriptionProp ? unescapeICalText(descriptionProp.value) : ""
+    });
+  }
+  return events;
+}
+var OTEvent = class {
+  constructor(raw) {
+    this.validEvent = true;
+    this.mtgNote = true;
+    this.tags = "";
+    this.participants = "";
+    var _a, _b;
+    this.name = raw.summary;
+    if (/^\(.*\)$/.test(this.name)) {
+      this.validEvent = false;
+      this.mtgNote = false;
+      this.name = this.name.slice(1, -1);
+    } else if (/^\[.*\]$/.test(this.name)) {
+      this.name = this.name.slice(1, -1);
+    } else if (/^<.*>$/.test(this.name)) {
+      this.mtgNote = false;
+      this.name = this.name.slice(1, -1);
+    }
+    if (raw.start.isDate) {
+      this.validEvent = false;
+      this.mtgNote = false;
+    }
+    this.day = raw.start.dateStr;
+    this.timeStart = (_a = raw.start.timeStr) != null ? _a : "0000";
+    this.timeEnd = (_b = raw.end.timeStr) != null ? _b : "0000";
+    this.location = raw.location;
+    for (const line of raw.description.split("\n")) {
+      if (/^#\S+/.test(line.trim())) {
+        this.tags += `${line.trim().replace(/#/g, "")} `;
+      } else if (line.trim()) {
+        this.participants += `${line}
+`;
+      }
+    }
+    this.participants = this.participants.trimEnd();
+    this.tags = this.tags.trim();
+  }
+  formatEvent() {
+    const range = `- ${formatHHMM(this.timeStart)}-${formatHHMM(this.timeEnd)}`;
+    if (!this.mtgNote)
+      return `${range} ${this.name}`;
+    const fileName = adjustFileName(this.day, this.name);
+    return `${range} [[${fileName}|${this.day} ${this.name}]]`;
+  }
+  buildMtgNote(template) {
+    return template.replace(/\{\{date:YYYY-MM-DD\}\}/g, this.day).replace(/\{\{title\}\}/g, this.name).replace(
+      /\{\{date:\[\[\[\]YYYY-MM-DD\[\]\]\] \[\(\]ddd\[\)\] HH:mm\}\}/g,
+      `[[${this.day}]] (${dowFor(this.day)}) ${formatHHMM(this.timeStart)}-${formatHHMM(this.timeEnd)}`
+    ).replace(/\{\{location\}\}/g, this.location).replace(/\{\{participants\}\}/g, this.participants).replace(/\{\{tags\}\}/g, this.tags);
+  }
+};
 var CalDAVClient = class {
   constructor(settings) {
     this.baseUrl = "https://caldav.icloud.com";
@@ -327,6 +523,50 @@ Available: ${names || "(none)"}`
     }
     return events;
   }
+  async fetchEventsForDate(dateStr, targetTz) {
+    if (!this.settings.iCloudUsername || !this.settings.iCloudPassword || !this.settings.calendarName) {
+      throw new Error("iCloud credentials are not configured \u2014 open Settings \u2192 Obsidian Calendar.");
+    }
+    if (!this.calendarUrl) {
+      this.calendarUrl = await this.discoverCalendarUrl();
+    }
+    const start = new Date(`${dateStr}T00:00:00Z`);
+    start.setUTCDate(start.getUTCDate() - 1);
+    const end = new Date(`${dateStr}T00:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + 2);
+    const formatRangeDate = (date) => date.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+    const startStr = formatRangeDate(start);
+    const endStr = formatRangeDate(end);
+    const response = await (0, import_obsidian.requestUrl)({
+      url: this.calendarUrl,
+      method: "REPORT",
+      headers: {
+        Authorization: this.authHeader(),
+        Depth: "1",
+        "Content-Type": "application/xml; charset=utf-8"
+      },
+      body: `<?xml version="1.0" encoding="utf-8"?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+    <C:calendar-data>
+      <C:expand start="${startStr}" end="${endStr}"/>
+    </C:calendar-data>
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VEVENT">
+        <C:time-range start="${startStr}" end="${endStr}"/>
+      </C:comp-filter>
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>`
+    });
+    return this.xmlCalendarData(response.text).flatMap((block) => parseOTICalEvents(block, targetTz)).filter((event) => event.start.dateStr === dateStr).sort((a, b) => {
+      var _a, _b;
+      return ((_a = a.start.timeStr) != null ? _a : "").localeCompare((_b = b.start.timeStr) != null ? _b : "");
+    }).map((event) => new OTEvent(event));
+  }
   // Call this when settings change so we re-discover on next fetch
   reset() {
     this.calendarUrl = null;
@@ -351,6 +591,184 @@ var ConfirmCreateModal = class extends import_obsidian.Modal {
     };
     const no = btnRow.createEl("button", { text: "Cancel" });
     no.onclick = () => this.close();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var CreateDailyModal = class extends import_obsidian.Modal {
+  constructor(app, plugin, date = new Date()) {
+    super(app);
+    this.placeKey = null;
+    this.overwrite = false;
+    this.geo = null;
+    this.running = false;
+    this.plugin = plugin;
+    this.dateStr = isoDate(date);
+  }
+  async onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Create Daily Note from Calendar" });
+    try {
+      this.geo = await this.plugin.loadGeoData();
+      this.placeKey = this.geo.default;
+    } catch (error) {
+      contentEl.createEl("p", { text: `Error: ${errorMessage(error)}` });
+      return;
+    }
+    new import_obsidian.Setting(contentEl).setName("Date").addText((text) => text.setValue(this.dateStr).onChange((value) => this.dateStr = value.trim()));
+    new import_obsidian.Setting(contentEl).setName("Location").addDropdown((dropdown) => {
+      var _a;
+      for (const [key, location] of Object.entries(this.geo.location)) {
+        dropdown.addOption(key, location.name);
+      }
+      dropdown.setValue((_a = this.placeKey) != null ? _a : "").onChange((value) => this.placeKey = value);
+    });
+    new import_obsidian.Setting(contentEl).setName("Overwrite existing files").addToggle((toggle) => toggle.setValue(this.overwrite).onChange((value) => this.overwrite = value));
+    this.statusEl = contentEl.createEl("p", { cls: "ot-status" });
+    new import_obsidian.Setting(contentEl).addButton((button) => button.setButtonText("Create").setCta().onClick(() => this.run())).addButton((button) => button.setButtonText("Cancel").onClick(() => this.close()));
+  }
+  async run() {
+    if (this.running || !this.geo || !this.placeKey)
+      return;
+    const date = dateFromIso(this.dateStr);
+    if (!date) {
+      this.statusEl.setText("Error: Date must be a valid YYYY-MM-DD value.");
+      return;
+    }
+    this.running = true;
+    this.statusEl.setText("Fetching calendar events\u2026");
+    try {
+      if (this.placeKey !== this.geo.default) {
+        this.geo.default = this.placeKey;
+        await this.plugin.saveGeoData(this.geo);
+      }
+      const place = this.geo.location[this.placeKey];
+      if (!place)
+        throw new Error("The selected location is not configured.");
+      const events = await this.plugin.fetchOTEvents(this.dateStr, place);
+      this.statusEl.setText(`Found ${events.length} event(s). Fetching weather\u2026`);
+      const weather = await this.plugin.getWeather(this.dateStr, place);
+      this.statusEl.setText("Creating files\u2026");
+      let morning = "";
+      let lunch = "";
+      let afternoon = "";
+      let evening = "";
+      for (const event of events) {
+        if (!event.validEvent)
+          continue;
+        const time = parseInt(event.timeStart, 10);
+        const line = `
+${event.formatEvent()}`;
+        if (time < 1200)
+          morning += line;
+        else if (time < 1300)
+          lunch += line;
+        else if (time < 1700)
+          afternoon += line;
+        else
+          evening += line;
+      }
+      let body = await this.plugin.readTemplate("daily_template.md");
+      body = body.replace(/%WEATHER%/g, weather).replace(/%MORNING%/g, morning).replace(/%LUNCH%/g, lunch).replace(/%AFTERNOON%/g, afternoon).replace(/%EVENING%/g, evening);
+      const dailyPath = this.plugin.dailyNotePath(date);
+      const dailyResult = await this.plugin.writeFile(dailyPath, body, this.overwrite);
+      const meetingEvents = events.filter((event) => event.mtgNote);
+      let created = 0;
+      let skipped = 0;
+      if (meetingEvents.length > 0) {
+        const meetingTemplate = await this.plugin.readTemplate("meeting_template.md");
+        for (const event of meetingEvents) {
+          const path = `${adjustFileName(event.day, event.name)}.md`;
+          const content = event.buildMtgNote(meetingTemplate);
+          const result = await this.plugin.writeFile(path, content, this.overwrite);
+          result === "skipped" ? skipped++ : created++;
+        }
+      }
+      const summary = `Daily note: ${dailyResult}. Meeting notes: ${created} created, ${skipped} skipped.`;
+      this.statusEl.setText(summary);
+      new import_obsidian.Notice(`Calendar: ${summary}`);
+      await this.plugin.openFile(dailyPath);
+      window.setTimeout(() => this.close(), 2e3);
+    } catch (error) {
+      this.statusEl.setText(`Error: ${errorMessage(error)}`);
+      console.error("Obsidian Calendar note creation error:", error);
+    } finally {
+      this.running = false;
+    }
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var SelectEventModal = class extends import_obsidian.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.dateStr = isoDate(new Date());
+    this.placeKey = null;
+    this.overwrite = false;
+    this.geo = null;
+    this.plugin = plugin;
+  }
+  async onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Create Meeting Note \u2014 Select Event" });
+    try {
+      this.geo = await this.plugin.loadGeoData();
+      this.placeKey = this.geo.default;
+    } catch (error) {
+      contentEl.createEl("p", { text: `Error: ${errorMessage(error)}` });
+      return;
+    }
+    new import_obsidian.Setting(contentEl).setName("Date").addText((text) => text.setValue(this.dateStr).onChange((value) => this.dateStr = value.trim()));
+    new import_obsidian.Setting(contentEl).setName("Location").addDropdown((dropdown) => {
+      var _a;
+      for (const [key, location] of Object.entries(this.geo.location)) {
+        dropdown.addOption(key, location.name);
+      }
+      dropdown.setValue((_a = this.placeKey) != null ? _a : "").onChange((value) => this.placeKey = value);
+    });
+    new import_obsidian.Setting(contentEl).setName("Overwrite existing files").addToggle((toggle) => toggle.setValue(this.overwrite).onChange((value) => this.overwrite = value));
+    this.statusEl = contentEl.createEl("p", { cls: "ot-status" });
+    this.listEl = contentEl.createDiv();
+    new import_obsidian.Setting(contentEl).addButton((button) => button.setButtonText("Fetch Events").setCta().onClick(() => this.fetchAndShow())).addButton((button) => button.setButtonText("Cancel").onClick(() => this.close()));
+  }
+  async fetchAndShow() {
+    this.statusEl.setText("Fetching events\u2026");
+    this.listEl.empty();
+    try {
+      if (!dateFromIso(this.dateStr))
+        throw new Error("Date must be a valid YYYY-MM-DD value.");
+      if (!this.geo || !this.placeKey)
+        throw new Error("Select a location.");
+      const place = this.geo.location[this.placeKey];
+      if (!place)
+        throw new Error("The selected location is not configured.");
+      const events = (await this.plugin.fetchOTEvents(this.dateStr, place)).filter((event) => event.validEvent);
+      if (events.length === 0) {
+        this.statusEl.setText("No valid events found.");
+        return;
+      }
+      this.statusEl.setText("Click a button to create that meeting note:");
+      for (const event of events) {
+        new import_obsidian.Setting(this.listEl).setName(`${formatHHMM(event.timeStart)}\u2013${formatHHMM(event.timeEnd)}  ${event.name}`).addButton((button) => button.setButtonText(event.mtgNote ? "Create Note" : "(no note)").setDisabled(!event.mtgNote).onClick(async () => {
+          try {
+            const template = await this.plugin.readTemplate("meeting_template.md");
+            const path = `${adjustFileName(event.day, event.name)}.md`;
+            const result = await this.plugin.writeFile(path, event.buildMtgNote(template), this.overwrite);
+            new import_obsidian.Notice(`Calendar: ${path} \u2014 ${result}`);
+            this.statusEl.setText(`${path} \u2014 ${result}`);
+          } catch (error) {
+            this.statusEl.setText(`Error: ${errorMessage(error)}`);
+          }
+        }));
+      }
+    } catch (error) {
+      this.statusEl.setText(`Error: ${errorMessage(error)}`);
+      console.error("Obsidian Calendar meeting-note error:", error);
+    }
   }
   onClose() {
     this.contentEl.empty();
@@ -700,34 +1118,15 @@ var CalendarView = class extends import_obsidian.ItemView {
     await this.openDailyNote(date);
   }
   async openDailyNote(date) {
-    const { settings, app } = this.plugin;
-    const fileName = formatDate(date, settings.dailyNoteFormat) + ".md";
-    const folder = settings.dailyNoteFolder.trim().replace(/\/$/, "");
-    const filePath = folder ? `${folder}/${fileName}` : fileName;
+    const { app } = this.plugin;
+    const filePath = this.plugin.dailyNotePath(date);
     const existing = app.vault.getAbstractFileByPath(filePath);
     if (existing instanceof import_obsidian.TFile) {
       const leaf = app.workspace.getLeaf(false);
       await leaf.openFile(existing);
       return;
     }
-    new ConfirmCreateModal(
-      app,
-      `There is no daily note for ${date.toDateString()}. Would you like to create one?`,
-      async () => {
-        try {
-          if (folder) {
-            const folderExists = app.vault.getAbstractFileByPath(folder);
-            if (!folderExists)
-              await app.vault.createFolder(folder);
-          }
-          const newFile = await app.vault.create(filePath, "");
-          const leaf = app.workspace.getLeaf(false);
-          await leaf.openFile(newFile);
-        } catch (e) {
-          new import_obsidian.Notice(`Failed to create daily note: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-    ).open();
+    new CreateDailyModal(app, this.plugin, date).open();
   }
   async openWeeklyNote(weekYear, weekNum) {
     const { settings, app } = this.plugin;
@@ -859,6 +1258,21 @@ var CalPlugin = class extends import_obsidian.Plugin {
         return (_a = this.view) == null ? void 0 : _a.refresh();
       }
     });
+    this.addCommand({
+      id: "ot-create-daily",
+      name: "Create Daily Note from Calendar",
+      callback: () => new CreateDailyModal(this.app, this).open()
+    });
+    this.addCommand({
+      id: "ot-select-event",
+      name: "Create Meeting Note (select event)",
+      callback: () => new SelectEventModal(this.app, this).open()
+    });
+    this.addCommand({
+      id: "ot-delete-tasks",
+      name: "Delete Task Section from Daily Note",
+      callback: () => this.deleteTaskSection()
+    });
     this.addSettingTab(new CalendarSettingTab(this.app, this));
   }
   onunload() {
@@ -872,6 +1286,109 @@ var CalPlugin = class extends import_obsidian.Plugin {
     await this.saveData(this.settings);
     this.caldav = new CalDAVClient(this.settings);
     (_a = this.view) == null ? void 0 : _a.refresh();
+  }
+  dailyNotePath(date) {
+    const fileName = `${formatDate(date, this.settings.dailyNoteFormat)}.md`;
+    const folder = this.settings.dailyNoteFolder.trim().replace(/^\/+|\/+$/g, "");
+    return folder ? `${folder}/${fileName}` : fileName;
+  }
+  async loadGeoData() {
+    const file = this.app.vault.getAbstractFileByPath("template/geo_data.md");
+    if (!(file instanceof import_obsidian.TFile))
+      throw new Error("template/geo_data.md not found");
+    const geo = JSON.parse(await this.app.vault.read(file));
+    if (!geo.default || !geo.location || !geo.location[geo.default]) {
+      throw new Error("template/geo_data.md does not contain a valid default location");
+    }
+    return geo;
+  }
+  async saveGeoData(geo) {
+    const file = this.app.vault.getAbstractFileByPath("template/geo_data.md");
+    if (!(file instanceof import_obsidian.TFile))
+      throw new Error("template/geo_data.md not found");
+    await this.app.vault.modify(file, JSON.stringify(geo, null, 4));
+  }
+  async readTemplate(name) {
+    const file = this.app.vault.getAbstractFileByPath(`template/${name}`);
+    if (!(file instanceof import_obsidian.TFile))
+      throw new Error(`template/${name} not found`);
+    return this.app.vault.read(file);
+  }
+  async ensureFolder(path) {
+    const parts = path.split("/").filter(Boolean);
+    let current = "";
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part;
+      const existing = this.app.vault.getAbstractFileByPath(current);
+      if (!existing) {
+        await this.app.vault.createFolder(current);
+      } else if (existing instanceof import_obsidian.TFile) {
+        throw new Error(`Cannot create folder "${current}" because a file exists there.`);
+      }
+    }
+  }
+  async writeFile(path, content, overwrite) {
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing) {
+      if (!(existing instanceof import_obsidian.TFile))
+        throw new Error(`Cannot write ${path}: a folder exists there.`);
+      if (!overwrite)
+        return "skipped";
+      await this.app.vault.modify(existing, content);
+      return "overwritten";
+    }
+    const folder = path.split("/").slice(0, -1).join("/");
+    if (folder)
+      await this.ensureFolder(folder);
+    await this.app.vault.create(path, content);
+    return "created";
+  }
+  async openFile(path) {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof import_obsidian.TFile))
+      throw new Error(`${path} was not created.`);
+    await this.app.workspace.getLeaf(false).openFile(file);
+  }
+  async fetchOTEvents(dateStr, place) {
+    return this.caldav.fetchEventsForDate(dateStr, place.tz);
+  }
+  async getWeather(dateStr, place) {
+    const timeZone = normalizeTimeZone(place.tz);
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(place.lat)}&longitude=${encodeURIComponent(place.lon)}&hourly=weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=${encodeURIComponent(timeZone)}&past_days=7`;
+    try {
+      const response = await (0, import_obsidian.requestUrl)({ url });
+      const data = response.json;
+      const index = data.daily.time.indexOf(dateStr);
+      if (index === -1)
+        return "";
+      const maxC = Math.round(data.daily.temperature_2m_max[index]);
+      const minC = Math.round(data.daily.temperature_2m_min[index]);
+      const maxF = Math.round(maxC * 9 / 5 + 32);
+      const minF = Math.round(minC * 9 / 5 + 32);
+      const icon = (hour) => {
+        var _a;
+        return (_a = WEATHER_ICONS[Math.round(data.hourly.weather_code[index * 24 + hour])]) != null ? _a : "";
+      };
+      return `${maxC}\xB0C/${minC}\xB0C (${maxF}\xB0F/${minF}\xB0F) ${icon(9)}/${icon(15)}/${icon(21)}`;
+    } catch (error) {
+      console.warn("Obsidian Calendar weather fetch failed:", error);
+      return "";
+    }
+  }
+  async deleteTaskSection() {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      new import_obsidian.Notice("Calendar: No active file.");
+      return;
+    }
+    const content = await this.app.vault.read(file);
+    const taskSection = /\n---\nDue Today\n```tasks\n[\s\S]*?```\nCompleted\n```tasks\n[\s\S]*?```(\n|$)/;
+    if (!taskSection.test(content)) {
+      new import_obsidian.Notice("Calendar: No task section found in this note.");
+      return;
+    }
+    await this.app.vault.modify(file, content.replace(taskSection, "$1"));
+    new import_obsidian.Notice("Calendar: Task section deleted.");
   }
   async activateView() {
     var _a;

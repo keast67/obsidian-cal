@@ -86,6 +86,19 @@
   grid-template-columns: 28px repeat(7, 1fr);
   padding: 0 8px 8px;
   row-gap: 0;
+  position: relative;
+}
+
+.cal-grid::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 8px;
+  left: 36px;
+  width: 2px;
+  background: var(--background-modifier-border);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Header row labels */
@@ -96,7 +109,6 @@
   text-align: center;
   padding: 2px 0 6px;
   line-height: 1;
-  box-shadow: inset -1px 0 var(--background-modifier-border);
 }
 
 .cal-dow-label {
@@ -127,7 +139,6 @@
   line-height: 24px;
   cursor: pointer;
   border-radius: 4px;
-  box-shadow: inset -1px 0 var(--background-modifier-border);
   transition: background 0.1s, color 0.1s;
 }
 

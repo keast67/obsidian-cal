@@ -96,6 +96,7 @@
   text-align: center;
   padding: 2px 0 6px;
   line-height: 1;
+  box-shadow: inset -1px 0 var(--background-modifier-border);
 }
 
 .cal-dow-label {
@@ -126,6 +127,7 @@
   line-height: 24px;
   cursor: pointer;
   border-radius: 4px;
+  box-shadow: inset -1px 0 var(--background-modifier-border);
   transition: background 0.1s, color 0.1s;
 }
 

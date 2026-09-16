@@ -17,7 +17,7 @@ obsidian-cal/
 
 **Deployment:** Plugin is installed in Obsidian via BRAT (Beta Reviewers Auto-update Tool) from GitHub. Do NOT copy files directly to the local Obsidian vault.
 
-After any change: build with `node esbuild.config.mjs production`, then commit and push `main.js`, `styles.css`, and `manifest.json` to GitHub. BRAT will pick up the update from there.
+After any change: bump the `version` field in `manifest.json` by 1 patch version (e.g. `0.0.23` → `0.0.24`), build with `node esbuild.config.mjs production`, then commit and push `main.js`, `styles.css`, and `manifest.json` to GitHub. BRAT will pick up the update from there.
 
 ## Architecture — main.ts sections
 

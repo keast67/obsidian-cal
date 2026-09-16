@@ -1,7 +1,7 @@
 {
   "id": "obsidian-cal",
   "name": "Obsidian Calendar",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "minAppVersion": "0.15.0",
   "description": "Sidebar calendar with iCloud events and template-based daily and meeting note creation.",
   "author": "Kuni Higashi",

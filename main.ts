@@ -185,6 +185,62 @@ function toCalDAVDate(date: Date): string {
 }
 
 // ============================================================
+// Imported-Markdown formatting (ported from format_import.py)
+// ============================================================
+
+// One or more spaces immediately before a "- " bullet marker, anywhere in the line.
+const LIST_INDENT_RE = / +(?=- )/g;
+// Leading (tabs/spaces + "-") bullet marker followed by extra spaces.
+const BULLET_SPACING_RE = /^([ \t]*-) +/;
+
+function formatMarkdownLine(line: string): string {
+  if (line.startsWith("### ")) {
+    line = "## " + line.slice(4);
+  }
+
+  line = line.replace(LIST_INDENT_RE, (spaces) => "\t".repeat(Math.ceil(spaces.length / 4)));
+  line = line.replace(BULLET_SPACING_RE, "$1 ");
+  return line.replace(/\*\*/g, "");
+}
+
+// Ports format_lines(): demotes "### " headings, converts space-indented list
+// markers to tabs, collapses bullet spacing, strips bold markers, drops the
+// blank line right after a "### " heading, and leaves YAML frontmatter untouched.
+function formatImportedMarkdownContent(content: string): string {
+  // Split keeping each line's trailing newline attached, mirroring iterating a file object.
+  const lines = content.split(/(?<=\n)/);
+  const output: string[] = [];
+  let removeNextBlankLine = false;
+  let inFrontmatter = false;
+
+  lines.forEach((line, index) => {
+    const isDelimiter = line.replace(/\r?\n$/, "") === "---";
+
+    if (index === 0 && isDelimiter) {
+      inFrontmatter = true;
+      output.push(line);
+      return;
+    }
+
+    if (inFrontmatter) {
+      output.push(line);
+      if (isDelimiter) inFrontmatter = false;
+      return;
+    }
+
+    if (removeNextBlankLine && line.trim() === "") {
+      removeNextBlankLine = false;
+      return;
+    }
+
+    removeNextBlankLine = line.startsWith("### ");
+    output.push(formatMarkdownLine(line));
+  });
+
+  return output.join("");
+}
+
+// ============================================================
 // iCal parser
 // ============================================================
 
@@ -1596,6 +1652,17 @@ export default class CalPlugin extends Plugin {
       callback: () => new SelectEventModal(this.app, this).open(),
     });
 
+    this.addCommand({
+      id: "format-imported-markdown",
+      name: "Format Imported Markdown",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== "md") return false;
+        if (!checking) this.formatImportedMarkdown(file);
+        return true;
+      },
+    });
+
     this.addSettingTab(new CalendarSettingTab(this.app, this));
   }
 
@@ -1703,6 +1770,17 @@ export default class CalPlugin extends Plugin {
       console.warn("Obsidian Calendar weather fetch failed:", error);
       return "";
     }
+  }
+
+  async formatImportedMarkdown(file: TFile): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const formatted = formatImportedMarkdownContent(content);
+    if (formatted === content) {
+      new Notice("Calendar: No formatting changes needed.");
+      return;
+    }
+    await this.app.vault.modify(file, formatted);
+    new Notice("Calendar: Formatted note.");
   }
 
   private async activateView() {

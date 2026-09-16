@@ -125,6 +125,43 @@ function errorMessage(error) {
 function toCalDAVDate(date) {
   return `${date.getUTCFullYear()}${pad2(date.getUTCMonth() + 1)}${pad2(date.getUTCDate())}T000000Z`;
 }
+var LIST_INDENT_RE = / +(?=- )/g;
+var BULLET_SPACING_RE = /^([ \t]*-) +/;
+function formatMarkdownLine(line) {
+  if (line.startsWith("### ")) {
+    line = "## " + line.slice(4);
+  }
+  line = line.replace(LIST_INDENT_RE, (spaces) => "	".repeat(Math.ceil(spaces.length / 4)));
+  line = line.replace(BULLET_SPACING_RE, "$1 ");
+  return line.replace(/\*\*/g, "");
+}
+function formatImportedMarkdownContent(content) {
+  const lines = content.split(/(?<=\n)/);
+  const output = [];
+  let removeNextBlankLine = false;
+  let inFrontmatter = false;
+  lines.forEach((line, index) => {
+    const isDelimiter = line.replace(/\r?\n$/, "") === "---";
+    if (index === 0 && isDelimiter) {
+      inFrontmatter = true;
+      output.push(line);
+      return;
+    }
+    if (inFrontmatter) {
+      output.push(line);
+      if (isDelimiter)
+        inFrontmatter = false;
+      return;
+    }
+    if (removeNextBlankLine && line.trim() === "") {
+      removeNextBlankLine = false;
+      return;
+    }
+    removeNextBlankLine = line.startsWith("### ");
+    output.push(formatMarkdownLine(line));
+  });
+  return output.join("");
+}
 function unescapeICalText(s) {
   return s.replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\n/g, "\n").replace(/\\\\/g, "\\");
 }
@@ -1268,6 +1305,18 @@ var CalPlugin = class extends import_obsidian.Plugin {
       name: "Create Meeting Note (select event)",
       callback: () => new SelectEventModal(this.app, this).open()
     });
+    this.addCommand({
+      id: "format-imported-markdown",
+      name: "Format Imported Markdown",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== "md")
+          return false;
+        if (!checking)
+          this.formatImportedMarkdown(file);
+        return true;
+      }
+    });
     this.addSettingTab(new CalendarSettingTab(this.app, this));
   }
   onunload() {
@@ -1369,6 +1418,16 @@ var CalPlugin = class extends import_obsidian.Plugin {
       console.warn("Obsidian Calendar weather fetch failed:", error);
       return "";
     }
+  }
+  async formatImportedMarkdown(file) {
+    const content = await this.app.vault.read(file);
+    const formatted = formatImportedMarkdownContent(content);
+    if (formatted === content) {
+      new import_obsidian.Notice("Calendar: No formatting changes needed.");
+      return;
+    }
+    await this.app.vault.modify(file, formatted);
+    new import_obsidian.Notice("Calendar: Formatted note.");
   }
   async activateView() {
     var _a;

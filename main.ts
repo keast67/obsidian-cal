@@ -1596,12 +1596,6 @@ export default class CalPlugin extends Plugin {
       callback: () => new SelectEventModal(this.app, this).open(),
     });
 
-    this.addCommand({
-      id: "ot-delete-tasks",
-      name: "Delete Task Section from Daily Note",
-      callback: () => this.deleteTaskSection(),
-    });
-
     this.addSettingTab(new CalendarSettingTab(this.app, this));
   }
 
@@ -1709,24 +1703,6 @@ export default class CalPlugin extends Plugin {
       console.warn("Obsidian Calendar weather fetch failed:", error);
       return "";
     }
-  }
-
-  async deleteTaskSection(): Promise<void> {
-    const file = this.app.workspace.getActiveFile();
-    if (!file) {
-      new Notice("Calendar: No active file.");
-      return;
-    }
-
-    const content = await this.app.vault.read(file);
-    const taskSection = /\n---\nDue Today\n```tasks\n[\s\S]*?```\nCompleted\n```tasks\n[\s\S]*?```(\n|$)/;
-    if (!taskSection.test(content)) {
-      new Notice("Calendar: No task section found in this note.");
-      return;
-    }
-
-    await this.app.vault.modify(file, content.replace(taskSection, "$1"));
-    new Notice("Calendar: Task section deleted.");
   }
 
   private async activateView() {

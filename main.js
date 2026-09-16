@@ -1268,11 +1268,6 @@ var CalPlugin = class extends import_obsidian.Plugin {
       name: "Create Meeting Note (select event)",
       callback: () => new SelectEventModal(this.app, this).open()
     });
-    this.addCommand({
-      id: "ot-delete-tasks",
-      name: "Delete Task Section from Daily Note",
-      callback: () => this.deleteTaskSection()
-    });
     this.addSettingTab(new CalendarSettingTab(this.app, this));
   }
   onunload() {
@@ -1374,21 +1369,6 @@ var CalPlugin = class extends import_obsidian.Plugin {
       console.warn("Obsidian Calendar weather fetch failed:", error);
       return "";
     }
-  }
-  async deleteTaskSection() {
-    const file = this.app.workspace.getActiveFile();
-    if (!file) {
-      new import_obsidian.Notice("Calendar: No active file.");
-      return;
-    }
-    const content = await this.app.vault.read(file);
-    const taskSection = /\n---\nDue Today\n```tasks\n[\s\S]*?```\nCompleted\n```tasks\n[\s\S]*?```(\n|$)/;
-    if (!taskSection.test(content)) {
-      new import_obsidian.Notice("Calendar: No task section found in this note.");
-      return;
-    }
-    await this.app.vault.modify(file, content.replace(taskSection, "$1"));
-    new import_obsidian.Notice("Calendar: Task section deleted.");
   }
   async activateView() {
     var _a;

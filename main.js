@@ -157,7 +157,7 @@ function formatImportedMarkdownContent(content) {
       removeNextBlankLine = false;
       return;
     }
-    removeNextBlankLine = line.startsWith("### ");
+    removeNextBlankLine = /^#{2,} /.test(line);
     output.push(formatMarkdownLine(line));
   });
   return output.join("");

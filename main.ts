@@ -233,7 +233,7 @@ function formatImportedMarkdownContent(content: string): string {
       return;
     }
 
-    removeNextBlankLine = line.startsWith("### ");
+    removeNextBlankLine = /^#{2,} /.test(line);
     output.push(formatMarkdownLine(line));
   });
 

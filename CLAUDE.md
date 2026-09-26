@@ -19,6 +19,8 @@ obsidian-cal/
 
 After any change: bump the `version` field in `manifest.json` by 1 patch version (e.g. `0.0.23` → `0.0.24`), build with `node esbuild.config.mjs production`, then commit and push `main.js`, `styles.css`, and `manifest.json` to GitHub. BRAT will pick up the update from there.
 
+**Always compile TypeScript to JavaScript before committing and pushing.** Obsidian (via BRAT) loads only `main.js`, never `main.ts`. Run `npm run build` (same as `node esbuild.config.mjs production`) and make sure it succeeds without errors before every commit, so the pushed `main.js` matches `main.ts`.
+
 ## Architecture — main.ts sections
 
 ### 1. Types & constants

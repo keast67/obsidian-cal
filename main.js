@@ -188,6 +188,17 @@ function parseICalDate(value, params) {
   const hr = parseInt(value.slice(9, 11));
   const mn = parseInt(value.slice(11, 13));
   const sc = parseInt(value.slice(13, 15));
+  const tzMatch = params.match(/TZID=("?)([^";:]+)\1/i);
+  if (tzMatch) {
+    const tz = normalizeTimeZone(tzMatch[2]);
+    try {
+      const localStr = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}`;
+      const ms = localToUtcMs(localStr, tz);
+      if (!isNaN(ms))
+        return { date: new Date(ms), isAllDay: false };
+    } catch (e) {
+    }
+  }
   return { date: new Date(yr, mo, dy, hr, mn, sc), isAllDay: false };
 }
 function parseICalEvents(icalText) {

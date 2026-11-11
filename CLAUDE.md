@@ -54,7 +54,8 @@ Parses raw iCalendar text from CalDAV responses. Steps:
 5. Date parsing (`parseICalDate`) handles three cases:
    - `VALUE=DATE` or 8-digit string → all-day, local Date at midnight.
    - Ends with `Z` → UTC datetime, parsed via `Date.UTC(...)`.
-   - Otherwise (TZID or floating) → treated as local time.
+   - `TZID=...` → wall-clock time in that IANA zone, converted to an absolute instant via `localToUtcMs` so it displays in the system's local time zone. Unrecognised zone names fall back to local time.
+   - Otherwise (floating) → treated as local time.
 
 Limitations: RRULE (recurring events) are not expanded. Multi-day events show a dot only on the start date.
 
@@ -153,5 +154,5 @@ Key colour values: amber CW `#e8a030`, cyan Sunday `#40d4d4`, magenta dots `#d04
 
 - RRULE (recurring events) are not expanded — only the base VEVENT is shown.
 - Events are keyed by start date only; multi-day events show only on their start date.
-- Timezone handling for TZID events is simplified: treated as local machine time.
+- Non-IANA TZID values (e.g. Windows-style "Eastern Standard Time") are treated as local machine time.
 - Weekly note folder is always the same as the daily note folder (no separate setting).

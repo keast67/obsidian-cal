@@ -265,13 +265,28 @@ function parseICalDate(value: string, params: string): { date: Date; isAllDay: b
     const sc = parseInt(value.slice(13, 15));
     return { date: new Date(Date.UTC(yr, mo, dy, hr, mn, sc)), isAllDay: false };
   }
-  // Local time (TZID or floating) — treat as local
   const yr = parseInt(value.slice(0, 4));
   const mo = parseInt(value.slice(4, 6)) - 1;
   const dy = parseInt(value.slice(6, 8));
   const hr = parseInt(value.slice(9, 11));
   const mn = parseInt(value.slice(11, 13));
   const sc = parseInt(value.slice(13, 15));
+
+  // TZID → wall-clock time in that zone; convert to an absolute instant so it
+  // displays in the system's local time zone.
+  const tzMatch = params.match(/TZID=("?)([^";:]+)\1/i);
+  if (tzMatch) {
+    const tz = normalizeTimeZone(tzMatch[2]);
+    try {
+      const localStr = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}`;
+      const ms = localToUtcMs(localStr, tz);
+      if (!isNaN(ms)) return { date: new Date(ms), isAllDay: false };
+    } catch {
+      // Unrecognised zone name (e.g. a Windows-style TZID) — fall through.
+    }
+  }
+
+  // Floating time (or unknown TZID) — treat as local
   return { date: new Date(yr, mo, dy, hr, mn, sc), isAllDay: false };
 }
 

@@ -384,6 +384,149 @@ function normalizeTimeZone(timeZone: string): string {
   return timeZone.replace(/%2F/gi, "/");
 }
 
+// ============================================================
+// Weather: Open-Meteo (forecast + archive) with retries,
+// MET Norway as a last-resort fallback for today/upcoming days.
+// ============================================================
+
+const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+const OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive";
+const MET_NORWAY_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact";
+const WEATHER_HOURS = [9, 15, 21];         // local hours whose conditions become the icons
+const WEATHER_MAX_ATTEMPTS = 3;            // per source; waits 1s, then 2s between attempts
+const WEATHER_ARCHIVE_PREFERRED_AFTER = 60; // days ago; forecast API keeps ~92 past days
+const WEATHER_MET_MAX_DAYS_AHEAD = 9;      // MET Norway forecast horizon
+const WEATHER_CACHE_TTL_MS = 60 * 60 * 1000; // for today/future dates (past dates never expire)
+
+interface DailyWeather {
+  maxC: number;
+  minC: number;
+  icons: string[]; // one per WEATHER_HOURS entry, "" when unknown
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+// Calendar date ("YYYY-MM-DD") and hour (0–23) of an instant in an IANA zone.
+function zonedDateHour(date: Date, timeZone: string): { dateStr: string; hour: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+  return {
+    dateStr: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: parseInt(get("hour"), 10) % 24,
+  };
+}
+
+// Whole days from `from` to `to` (both "YYYY-MM-DD").
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+// GET JSON, retrying network errors, timeouts, HTTP 429 and 5xx with backoff.
+// Other HTTP errors (e.g. 400 for an out-of-range date) fail immediately.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchJsonWithRetry(url: string, headers?: Record<string, string>): Promise<any> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= WEATHER_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) await sleep(1000 * 2 ** (attempt - 2));
+    try {
+      const response = await requestUrl({ url, headers, throw: false });
+      if (response.status >= 200 && response.status < 300) return response.json;
+      lastError = new Error(`HTTP ${response.status}`);
+      if (response.status !== 429 && response.status < 500) break;
+    } catch (error: unknown) {
+      lastError = error; // network failure or invalid JSON
+    }
+  }
+  throw lastError;
+}
+
+async function fetchOpenMeteo(baseUrl: string, dateStr: string, place: GeoLocation, timeZone: string): Promise<DailyWeather> {
+  const url = baseUrl
+    + `?latitude=${encodeURIComponent(place.lat)}&longitude=${encodeURIComponent(place.lon)}`
+    + "&hourly=weather_code&daily=temperature_2m_max,temperature_2m_min"
+    + `&timezone=${encodeURIComponent(timeZone)}`
+    + `&start_date=${dateStr}&end_date=${dateStr}`;
+  const data = await fetchJsonWithRetry(url);
+
+  const index: number = data?.daily?.time?.indexOf(dateStr) ?? -1;
+  const maxC = data?.daily?.temperature_2m_max?.[index];
+  const minC = data?.daily?.temperature_2m_min?.[index];
+  // The archive returns nulls for days it hasn't processed yet.
+  if (index === -1 || typeof maxC !== "number" || typeof minC !== "number") {
+    throw new Error(`no data for ${dateStr}`);
+  }
+
+  const times: string[] = data.hourly?.time ?? [];
+  const codes: unknown[] = data.hourly?.weather_code ?? [];
+  const icons = WEATHER_HOURS.map((hour) => {
+    const code = codes[times.indexOf(`${dateStr}T${pad2(hour)}:00`)];
+    return typeof code === "number" ? WEATHER_ICONS[Math.round(code)] ?? "" : "";
+  });
+  return { maxC, minC, icons };
+}
+
+// MET Norway symbol_code (e.g. "lightrainshowers_day") → same emoji set as WEATHER_ICONS.
+function metSymbolIcon(symbol: string): string {
+  const base = symbol.replace(/_(day|night|polartwilight)$/, "");
+  if (base.includes("thunder")) return "⚡️";
+  if (base.includes("snow") || base.includes("sleet")) return "❄️";
+  if (base.includes("rain")) return "☔️";
+  const simple: Record<string, string> = {
+    clearsky: "☀️", fair: "🌤", partlycloudy: "⛅️", cloudy: "☁️", fog: "🌫",
+  };
+  return simple[base] ?? "";
+}
+
+// Forecast-only: for today, hours already past are missing, so min/max cover the rest of the day.
+async function fetchMetNorway(dateStr: string, place: GeoLocation, timeZone: string): Promise<DailyWeather> {
+  const lat = Number(place.lat).toFixed(4);
+  const lon = Number(place.lon).toFixed(4);
+  // MET Norway rejects requests without an identifying User-Agent.
+  const data = await fetchJsonWithRetry(`${MET_NORWAY_URL}?lat=${lat}&lon=${lon}`, {
+    "User-Agent": "obsidian-cal-plugin",
+  });
+
+  const temps: number[] = [];
+  const icons = WEATHER_HOURS.map(() => "");
+  const iconDistance = WEATHER_HOURS.map(() => Infinity);
+  for (const entry of data?.properties?.timeseries ?? []) {
+    const { dateStr: day, hour } = zonedDateHour(new Date(entry.time), timeZone);
+    if (day !== dateStr) continue;
+
+    const temp = entry.data?.instant?.details?.air_temperature;
+    if (typeof temp === "number") temps.push(temp);
+
+    // Later forecast steps are 6-hourly, so take the nearest step within 3 hours.
+    const symbol: string | undefined = entry.data?.next_1_hours?.summary?.symbol_code
+      ?? entry.data?.next_6_hours?.summary?.symbol_code;
+    if (!symbol) continue;
+    WEATHER_HOURS.forEach((target, slot) => {
+      const distance = Math.abs(hour - target);
+      if (distance <= 3 && distance < iconDistance[slot]) {
+        iconDistance[slot] = distance;
+        icons[slot] = metSymbolIcon(symbol);
+      }
+    });
+  }
+  if (temps.length === 0) throw new Error(`no data for ${dateStr}`);
+  return { maxC: Math.max(...temps), minC: Math.min(...temps), icons };
+}
+
+function formatWeather(weather: DailyWeather): string {
+  const c = (value: number) => Math.round(value);
+  const f = (value: number) => Math.round(value * 9 / 5 + 32);
+  return `${c(weather.maxC)}°C/${c(weather.minC)}°C (${f(weather.maxC)}°F/${f(weather.minC)}°F) ${weather.icons.join("/")}`;
+}
+
 // Convert a wall-clock value in an IANA timezone to its UTC timestamp.
 function localToUtcMs(localStr: string, timeZone: string): number {
   const naiveUtc = new Date(`${localStr}Z`).getTime();
@@ -1631,6 +1774,7 @@ export default class CalPlugin extends Plugin {
   settings!: CalendarSettings;
   caldav!: CalDAVClient;
   private view: CalendarView | null = null;
+  private weatherCache = new Map<string, { value: string; expires: number }>();
 
   async onload() {
     await this.loadSettings();
@@ -1763,28 +1907,38 @@ export default class CalPlugin extends Plugin {
     return this.caldav.fetchEventsForDate(dateStr, place.tz);
   }
 
+  // Tries each applicable source in order; returns "" (and shows a Notice) only if all fail.
   async getWeather(dateStr: string, place: GeoLocation): Promise<string> {
     const timeZone = normalizeTimeZone(place.tz);
-    const url = "https://api.open-meteo.com/v1/forecast"
-      + `?latitude=${encodeURIComponent(place.lat)}&longitude=${encodeURIComponent(place.lon)}`
-      + "&hourly=weather_code&daily=temperature_2m_max,temperature_2m_min"
-      + `&timezone=${encodeURIComponent(timeZone)}&past_days=7`;
-    try {
-      const response = await requestUrl({ url });
-      const data = response.json;
-      const index = data.daily.time.indexOf(dateStr);
-      if (index === -1) return "";
+    const cacheKey = `${place.lat},${place.lon},${dateStr}`;
+    const cached = this.weatherCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.value;
 
-      const maxC = Math.round(data.daily.temperature_2m_max[index]);
-      const minC = Math.round(data.daily.temperature_2m_min[index]);
-      const maxF = Math.round(maxC * 9 / 5 + 32);
-      const minF = Math.round(minC * 9 / 5 + 32);
-      const icon = (hour: number) => WEATHER_ICONS[Math.round(data.hourly.weather_code[index * 24 + hour])] ?? "";
-      return `${maxC}°C/${minC}°C (${maxF}°F/${minF}°F) ${icon(9)}/${icon(15)}/${icon(21)}`;
-    } catch (error: unknown) {
-      console.warn("Obsidian Calendar weather fetch failed:", error);
-      return "";
+    const daysAgo = daysBetween(dateStr, zonedDateHour(new Date(), timeZone).dateStr);
+    const forecast = { name: "Open-Meteo", fetch: () => fetchOpenMeteo(OPEN_METEO_FORECAST_URL, dateStr, place, timeZone) };
+    const archive = { name: "Open-Meteo archive", fetch: () => fetchOpenMeteo(OPEN_METEO_ARCHIVE_URL, dateStr, place, timeZone) };
+    const met = { name: "MET Norway", fetch: () => fetchMetNorway(dateStr, place, timeZone) };
+
+    const sources: typeof forecast[] = [];
+    if (daysAgo > WEATHER_ARCHIVE_PREFERRED_AFTER) sources.push(archive, forecast);
+    else if (daysAgo >= 1) sources.push(forecast, archive);
+    else sources.push(forecast);
+    if (daysAgo <= 0 && -daysAgo <= WEATHER_MET_MAX_DAYS_AHEAD) sources.push(met);
+
+    const failures: string[] = [];
+    for (const source of sources) {
+      try {
+        const value = formatWeather(await source.fetch());
+        const expires = daysAgo >= 1 ? Infinity : Date.now() + WEATHER_CACHE_TTL_MS;
+        this.weatherCache.set(cacheKey, { value, expires });
+        return value;
+      } catch (error: unknown) {
+        console.warn(`Obsidian Calendar: ${source.name} weather fetch failed:`, error);
+        failures.push(`${source.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
+    new Notice(`Calendar: Weather unavailable for ${dateStr} (${failures.join("; ")}).`, 8000);
+    return "";
   }
 
   async formatImportedMarkdown(file: TFile): Promise<void> {

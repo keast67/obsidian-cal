@@ -288,6 +288,130 @@ function getICalTzid(rawLine) {
 function normalizeTimeZone(timeZone) {
   return timeZone.replace(/%2F/gi, "/");
 }
+var OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+var OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive";
+var MET_NORWAY_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact";
+var WEATHER_HOURS = [9, 15, 21];
+var WEATHER_MAX_ATTEMPTS = 3;
+var WEATHER_ARCHIVE_PREFERRED_AFTER = 60;
+var WEATHER_MET_MAX_DAYS_AHEAD = 9;
+var WEATHER_CACHE_TTL_MS = 60 * 60 * 1e3;
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+function zonedDateHour(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  const get = (type) => {
+    var _a, _b;
+    return (_b = (_a = parts.find((part) => part.type === type)) == null ? void 0 : _a.value) != null ? _b : "00";
+  };
+  return {
+    dateStr: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: parseInt(get("hour"), 10) % 24
+  };
+}
+function daysBetween(from, to) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 864e5);
+}
+async function fetchJsonWithRetry(url, headers) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= WEATHER_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1)
+      await sleep(1e3 * 2 ** (attempt - 2));
+    try {
+      const response = await (0, import_obsidian.requestUrl)({ url, headers, throw: false });
+      if (response.status >= 200 && response.status < 300)
+        return response.json;
+      lastError = new Error(`HTTP ${response.status}`);
+      if (response.status !== 429 && response.status < 500)
+        break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+async function fetchOpenMeteo(baseUrl, dateStr, place, timeZone) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+  const url = baseUrl + `?latitude=${encodeURIComponent(place.lat)}&longitude=${encodeURIComponent(place.lon)}&hourly=weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=${encodeURIComponent(timeZone)}&start_date=${dateStr}&end_date=${dateStr}`;
+  const data = await fetchJsonWithRetry(url);
+  const index = (_c = (_b = (_a = data == null ? void 0 : data.daily) == null ? void 0 : _a.time) == null ? void 0 : _b.indexOf(dateStr)) != null ? _c : -1;
+  const maxC = (_e = (_d = data == null ? void 0 : data.daily) == null ? void 0 : _d.temperature_2m_max) == null ? void 0 : _e[index];
+  const minC = (_g = (_f = data == null ? void 0 : data.daily) == null ? void 0 : _f.temperature_2m_min) == null ? void 0 : _g[index];
+  if (index === -1 || typeof maxC !== "number" || typeof minC !== "number") {
+    throw new Error(`no data for ${dateStr}`);
+  }
+  const times = (_i = (_h = data.hourly) == null ? void 0 : _h.time) != null ? _i : [];
+  const codes = (_k = (_j = data.hourly) == null ? void 0 : _j.weather_code) != null ? _k : [];
+  const icons = WEATHER_HOURS.map((hour) => {
+    var _a2;
+    const code = codes[times.indexOf(`${dateStr}T${pad2(hour)}:00`)];
+    return typeof code === "number" ? (_a2 = WEATHER_ICONS[Math.round(code)]) != null ? _a2 : "" : "";
+  });
+  return { maxC, minC, icons };
+}
+function metSymbolIcon(symbol) {
+  var _a;
+  const base = symbol.replace(/_(day|night|polartwilight)$/, "");
+  if (base.includes("thunder"))
+    return "\u26A1\uFE0F";
+  if (base.includes("snow") || base.includes("sleet"))
+    return "\u2744\uFE0F";
+  if (base.includes("rain"))
+    return "\u2614\uFE0F";
+  const simple = {
+    clearsky: "\u2600\uFE0F",
+    fair: "\u{1F324}",
+    partlycloudy: "\u26C5\uFE0F",
+    cloudy: "\u2601\uFE0F",
+    fog: "\u{1F32B}"
+  };
+  return (_a = simple[base]) != null ? _a : "";
+}
+async function fetchMetNorway(dateStr, place, timeZone) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+  const lat = Number(place.lat).toFixed(4);
+  const lon = Number(place.lon).toFixed(4);
+  const data = await fetchJsonWithRetry(`${MET_NORWAY_URL}?lat=${lat}&lon=${lon}`, {
+    "User-Agent": "obsidian-cal-plugin"
+  });
+  const temps = [];
+  const icons = WEATHER_HOURS.map(() => "");
+  const iconDistance = WEATHER_HOURS.map(() => Infinity);
+  for (const entry of (_b = (_a = data == null ? void 0 : data.properties) == null ? void 0 : _a.timeseries) != null ? _b : []) {
+    const { dateStr: day, hour } = zonedDateHour(new Date(entry.time), timeZone);
+    if (day !== dateStr)
+      continue;
+    const temp = (_e = (_d = (_c = entry.data) == null ? void 0 : _c.instant) == null ? void 0 : _d.details) == null ? void 0 : _e.air_temperature;
+    if (typeof temp === "number")
+      temps.push(temp);
+    const symbol = (_l = (_h = (_g = (_f = entry.data) == null ? void 0 : _f.next_1_hours) == null ? void 0 : _g.summary) == null ? void 0 : _h.symbol_code) != null ? _l : (_k = (_j = (_i = entry.data) == null ? void 0 : _i.next_6_hours) == null ? void 0 : _j.summary) == null ? void 0 : _k.symbol_code;
+    if (!symbol)
+      continue;
+    WEATHER_HOURS.forEach((target, slot) => {
+      const distance = Math.abs(hour - target);
+      if (distance <= 3 && distance < iconDistance[slot]) {
+        iconDistance[slot] = distance;
+        icons[slot] = metSymbolIcon(symbol);
+      }
+    });
+  }
+  if (temps.length === 0)
+    throw new Error(`no data for ${dateStr}`);
+  return { maxC: Math.max(...temps), minC: Math.min(...temps), icons };
+}
+function formatWeather(weather) {
+  const c = (value) => Math.round(value);
+  const f = (value) => Math.round(value * 9 / 5 + 32);
+  return `${c(weather.maxC)}\xB0C/${c(weather.minC)}\xB0C (${f(weather.maxC)}\xB0F/${f(weather.minC)}\xB0F) ${weather.icons.join("/")}`;
+}
 function localToUtcMs(localStr, timeZone) {
   const naiveUtc = new Date(`${localStr}Z`).getTime();
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -1284,6 +1408,7 @@ var CalPlugin = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
     this.view = null;
+    this.weatherCache = /* @__PURE__ */ new Map();
   }
   async onload() {
     await this.loadSettings();
@@ -1407,28 +1532,40 @@ var CalPlugin = class extends import_obsidian.Plugin {
   async fetchOTEvents(dateStr, place) {
     return this.caldav.fetchEventsForDate(dateStr, place.tz);
   }
+  // Tries each applicable source in order; returns "" (and shows a Notice) only if all fail.
   async getWeather(dateStr, place) {
     const timeZone = normalizeTimeZone(place.tz);
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(place.lat)}&longitude=${encodeURIComponent(place.lon)}&hourly=weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=${encodeURIComponent(timeZone)}&past_days=7`;
-    try {
-      const response = await (0, import_obsidian.requestUrl)({ url });
-      const data = response.json;
-      const index = data.daily.time.indexOf(dateStr);
-      if (index === -1)
-        return "";
-      const maxC = Math.round(data.daily.temperature_2m_max[index]);
-      const minC = Math.round(data.daily.temperature_2m_min[index]);
-      const maxF = Math.round(maxC * 9 / 5 + 32);
-      const minF = Math.round(minC * 9 / 5 + 32);
-      const icon = (hour) => {
-        var _a;
-        return (_a = WEATHER_ICONS[Math.round(data.hourly.weather_code[index * 24 + hour])]) != null ? _a : "";
-      };
-      return `${maxC}\xB0C/${minC}\xB0C (${maxF}\xB0F/${minF}\xB0F) ${icon(9)}/${icon(15)}/${icon(21)}`;
-    } catch (error) {
-      console.warn("Obsidian Calendar weather fetch failed:", error);
-      return "";
+    const cacheKey = `${place.lat},${place.lon},${dateStr}`;
+    const cached = this.weatherCache.get(cacheKey);
+    if (cached && cached.expires > Date.now())
+      return cached.value;
+    const daysAgo = daysBetween(dateStr, zonedDateHour(new Date(), timeZone).dateStr);
+    const forecast = { name: "Open-Meteo", fetch: () => fetchOpenMeteo(OPEN_METEO_FORECAST_URL, dateStr, place, timeZone) };
+    const archive = { name: "Open-Meteo archive", fetch: () => fetchOpenMeteo(OPEN_METEO_ARCHIVE_URL, dateStr, place, timeZone) };
+    const met = { name: "MET Norway", fetch: () => fetchMetNorway(dateStr, place, timeZone) };
+    const sources = [];
+    if (daysAgo > WEATHER_ARCHIVE_PREFERRED_AFTER)
+      sources.push(archive, forecast);
+    else if (daysAgo >= 1)
+      sources.push(forecast, archive);
+    else
+      sources.push(forecast);
+    if (daysAgo <= 0 && -daysAgo <= WEATHER_MET_MAX_DAYS_AHEAD)
+      sources.push(met);
+    const failures = [];
+    for (const source of sources) {
+      try {
+        const value = formatWeather(await source.fetch());
+        const expires = daysAgo >= 1 ? Infinity : Date.now() + WEATHER_CACHE_TTL_MS;
+        this.weatherCache.set(cacheKey, { value, expires });
+        return value;
+      } catch (error) {
+        console.warn(`Obsidian Calendar: ${source.name} weather fetch failed:`, error);
+        failures.push(`${source.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
+    new import_obsidian.Notice(`Calendar: Weather unavailable for ${dateStr} (${failures.join("; ")}).`, 8e3);
+    return "";
   }
   async formatImportedMarkdown(file) {
     const content = await this.app.vault.read(file);
